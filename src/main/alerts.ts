@@ -73,6 +73,10 @@ export class AlertManager {
       maximizable: false,
       skipTaskbar: true,
       alwaysOnTop: true,
+      // 透明窗口三件套：关闭 DWM 阴影/边框/系统圆角，避免窗口矩形出现灰色光晕
+      hasShadow: false,
+      thickFrame: false,
+      roundedCorners: false,
       webPreferences: { preload: join(__dirname, '../preload/index.js') }
     })
     this.win.setAlwaysOnTop(true, 'screen-saver')
@@ -95,8 +99,8 @@ export class AlertManager {
     const height = Math.max(140, Math.min(560, this.contentH > 0 ? this.contentH + 8 : estimated))
     const { workArea } = screen.getPrimaryDisplay()
     this.win.setBounds({
-      x: workArea.x + workArea.width - WIN_W - 16,
-      y: workArea.y + workArea.height - height, // 底边紧贴任务栏上沿
+      x: workArea.x + workArea.width - WIN_W, // 右缘贴屏幕右边
+      y: workArea.y + workArea.height - height, // 底缘贴任务栏上沿
       width: WIN_W,
       height
     })

@@ -48,8 +48,8 @@ export default function AlertApp(): JSX.Element {
   }
 
   return (
-    <div ref={rootRef} className="select-none p-2 font-sans text-[13px] text-zinc-100">
-      <div className="overflow-hidden rounded-2xl border border-zinc-700/70 bg-zinc-900/95 shadow-pop backdrop-blur">
+    <div ref={rootRef} className="select-none p-1.5 font-sans text-[13px] text-zinc-100">
+      <div className="overflow-hidden rounded-2xl border border-zinc-700/70 bg-zinc-900/95">
         <div className="flex items-center gap-2 px-4 pb-1 pt-2.5">
           <BellRing size={13} className="text-accent" />
           <span className="text-[11px] font-semibold tracking-wide text-zinc-400">NoticeMe 提醒</span>
