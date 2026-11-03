@@ -17,6 +17,8 @@ const FALLBACK_PRESETS = [5, 10, 30, 60, 1440]
 export default function AlertApp(): JSX.Element {
   const [payload, setPayload] = useState<Payload>({ items: [], presets: FALLBACK_PRESETS })
   const [snoozeOpen, setSnoozeOpen] = useState<string | null>(null)
+  /** 正在播放离场动画的卡片（200ms 后才真正请求移除） */
+  const [leaving, setLeaving] = useState<string[]>([])
   const rootRef = useRef<HTMLDivElement>(null)
 
   // 实测内容高度回报主进程 → 窗口精确贴合卡片、底边贴住任务栏
@@ -43,12 +45,22 @@ export default function AlertApp(): JSX.Element {
   }, [])
 
   const act = (type: 'complete' | 'snooze' | 'open' | 'dismiss', taskId: string, minutes?: number): void => {
-    void window.noticeme.alertAction({ type, taskId, minutes })
+    // 先播 200ms 离场动画，再真正请求主进程移除
+    setLeaving(prev => (prev.includes(taskId) ? prev : [...prev, taskId]))
     setSnoozeOpen(null)
+    window.setTimeout(() => {
+      void window.noticeme.alertAction({ type, taskId, minutes })
+      setLeaving(prev => prev.filter(id => id !== taskId))
+    }, 200)
   }
 
   return (
-    <div ref={rootRef} className="select-none p-1.5 font-sans text-[13px] text-zinc-100">
+    <div
+      ref={rootRef}
+      className={`select-none p-1.5 font-sans text-[13px] text-zinc-100 transition-opacity duration-200 ${
+        payload.items.length === 0 ? 'opacity-0' : 'opacity-100'
+      }`}
+    >
       <div className="overflow-hidden rounded-2xl border border-zinc-700/70 bg-zinc-900/95">
         <div className="flex items-center gap-2 px-4 pb-1 pt-2.5">
           <BellRing size={13} className="text-accent" />
@@ -61,7 +73,9 @@ export default function AlertApp(): JSX.Element {
             return (
               <div
                 key={item.taskId}
-                className="rounded-xl border border-zinc-700/50 bg-zinc-800/60 px-3 py-2.5 animate-slideUp"
+                className={`rounded-xl border border-zinc-700/50 bg-zinc-800/60 px-3 py-2.5 transition-all duration-200 animate-slideUp ${
+                  leaving.includes(item.taskId) ? 'translate-x-8 opacity-0 scale-[0.98]' : ''
+                }`}
               >
                 <div className="flex items-start gap-2">
                   <span

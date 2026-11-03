@@ -1,6 +1,6 @@
 {
   "name": "noticeme",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "NoticeMe — 本地优先的 Windows 桌面待办与提醒应用",
   "main": "out/main/index.js",
   "author": "DSH",

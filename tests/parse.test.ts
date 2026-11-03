@@ -272,6 +272,13 @@ describe('parseQuickAdd · 模糊时间 v4（刻钟/分钟内/小时钟头/一�
     expect(parseQuickAdd('5分钟之后 起身', NOW).dueAt).toBe(new Date(NOW.getTime() + 5 * 60000).toISOString())
   })
 
+  it('中文数字分钟：一分钟后 / 十分钟之后 / 两分钟内 / 100分钟后', () => {
+    expect(parseQuickAdd('一分钟后 回电', NOW).dueAt).toBe(new Date(NOW.getTime() + 1 * 60000).toISOString())
+    expect(parseQuickAdd('十分钟之后 喝水', NOW).dueAt).toBe(new Date(NOW.getTime() + 10 * 60000).toISOString())
+    expect(parseQuickAdd('两分钟内 提交', NOW).dueAt).toBe(new Date(NOW.getTime() + 2 * 60000).toISOString())
+    expect(parseQuickAdd('100分钟后 下班', NOW).dueAt).toBe(new Date(NOW.getTime() + 100 * 60000).toISOString())
+  })
+
   it('N个小时内 / 两个钟头后', () => {
     expect(parseQuickAdd('2个小时内 出门', NOW).dueAt).toBe(new Date(NOW.getTime() + 120 * 60000).toISOString())
     expect(parseQuickAdd('两个钟头后 汤就好', NOW).dueAt).toBe(new Date(NOW.getTime() + 120 * 60000).toISOString())

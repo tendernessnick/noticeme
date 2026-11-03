@@ -18,6 +18,8 @@ export class AlertManager {
   private queue: AlertEntry[] = []
   /** 渲染端实测的内容高度（px），用于让窗口精确贴合卡片 */
   private contentH = 0
+  /** 队列清空后的延迟隐藏计时器（给渐隐动画留时间） */
+  private hideTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(private readonly deps: Deps) {
     // 渲染端挂载时主动拉取当前队列（防止加载完成前的 IPC 消息丢失）
@@ -90,9 +92,22 @@ export class AlertManager {
   refresh(): void {
     if (!this.win || this.win.isDestroyed()) return
     if (this.queue.length === 0) {
-      this.win.hide()
+      // 先推空载荷让渲染端渐隐（CSS opacity 200ms），随后再隐藏窗口
       this.win.flashFrame(false)
+      this.win.webContents.send('alert:queue', {
+        items: [],
+        presets: this.deps.getSettings().snoozePresets
+      })
+      if (this.hideTimer) clearTimeout(this.hideTimer)
+      this.hideTimer = setTimeout(() => {
+        this.hideTimer = null
+        if (this.win && !this.win.isDestroyed() && this.queue.length === 0) this.win.hide()
+      }, 240)
       return
+    }
+    if (this.hideTimer) {
+      clearTimeout(this.hideTimer)
+      this.hideTimer = null
     }
     // 高度：优先用渲染端实测高度，未知时按条目估算
     const estimated = 110 + this.queue.length * 112

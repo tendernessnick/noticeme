@@ -105,11 +105,16 @@ export function parseQuickAdd(input: string, now: Date = new Date()): ParsedQuic
   const setRelMin = (n: number): void => {
     if (relativeMinutes === null) relativeMinutes = n
   }
-  //    N分钟后 / N分钟之后 / N分钟内
-  text = text.replace(/(\d{1,4})\s*分钟\s*(?:之|过)?\s*(后|内)/g, (_m, g1: string) => {
-    setRelMin(Number(g1))
-    return ' '
-  })
+  //    N分钟后 / N分钟之后 / N分钟内（阿拉伯与中文数字：一分钟后 / 十分钟之后 / 100分钟后）
+  text = text.replace(
+    new RegExp(`((?:\\d{1,4})|(?:[一二两三四五六七八九十]+))\\s*分钟\\s*(?:之|过)?\\s*(后|内)`, 'g'),
+    (_m, g1: string) => {
+      const n = cnNum(g1)
+      if (Number.isNaN(n) || n < 1 || n > 10080) return _m // 无法解析的保留原文
+      setRelMin(n)
+      return ' '
+    }
+  )
   //    N小时后 / 半小时后 / N个小时之内 / N个钟头后
   const hoursLater = text.match(
     /(半|(?:\d{1,2}|[一二两三四五六七八九十]+))\s*个?\s*(?:小时|钟头)\s*(?:之|过)?\s*(?:后|内)/
