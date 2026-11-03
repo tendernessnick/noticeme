@@ -188,3 +188,74 @@ describe('parseQuickAdd · 模糊日期 v2（裸几号/天后/裸下周/周末/�
     expect(parseQuickAdd('周五 交报告', NOW).dueAt).toBe(localISO(2026, 11, 6, 9, 0))
   })
 })
+
+describe('parseQuickAdd · 模糊日期 v3（小时偏移/明早明晚/礼拜/月锚点/下个月/单字时段/中文优先级）', () => {
+  it('N小时后 / 半小时后 / 三小时之后', () => {
+    expect(parseQuickAdd('2小时后 开会', NOW).dueAt).toBe(new Date(NOW.getTime() + 120 * 60000).toISOString())
+    expect(parseQuickAdd('半小时后 喝水', NOW).dueAt).toBe(new Date(NOW.getTime() + 30 * 60000).toISOString())
+    expect(parseQuickAdd('三小时之后 总结', NOW).dueAt).toBe(new Date(NOW.getTime() + 180 * 60000).toISOString())
+  })
+
+  it('N天内 / 三天之内（截止语义）', () => {
+    expect(parseQuickAdd('3天内 交付', NOW).dueAt).toBe(localISO(2026, 11, 6, 9, 0))
+    expect(parseQuickAdd('三天之内 完成初稿', NOW).dueAt).toBe(localISO(2026, 11, 6, 9, 0))
+  })
+
+  it('明早 / 明晚 / 今早', () => {
+    expect(parseQuickAdd('明早 晨跑', NOW).dueAt).toBe(localISO(2026, 11, 4, 8, 0))
+    expect(parseQuickAdd('明晚 看剧', NOW).dueAt).toBe(localISO(2026, 11, 4, 20, 0))
+    expect(parseQuickAdd('今早 记账', NOW).dueAt).toBe(localISO(2026, 11, 3, 8, 0))
+  })
+
+  it('明早9点：显式时刻覆盖词条默认时刻', () => {
+    const r = parseQuickAdd('明早9点 晨会', NOW)
+    expect(r.dueAt).toBe(localISO(2026, 11, 4, 9, 0))
+    expect(r.title).toBe('晨会')
+  })
+
+  it('礼拜X / 下礼拜X', () => {
+    expect(parseQuickAdd('礼拜五 交报告', NOW).dueAt).toBe(localISO(2026, 11, 6, 9, 0))
+    expect(parseQuickAdd('下礼拜一 晨会', NOW).dueAt).toBe(localISO(2026, 11, 16, 9, 0))
+  })
+
+  it('月初 / 月中 / 年底', () => {
+    expect(parseQuickAdd('月初 交房租', NOW).dueAt).toBe(localISO(2026, 12, 1, 9, 0))
+    expect(parseQuickAdd('月中 体检', NOW).dueAt).toBe(localISO(2026, 11, 15, 9, 0))
+    expect(parseQuickAdd('年底 总结', NOW).dueAt).toBe(localISO(2026, 12, 31, 9, 0))
+  })
+
+  it('下个月 / 下个月15号', () => {
+    expect(parseQuickAdd('下个月 交房租', NOW).dueAt).toBe(localISO(2026, 12, 3, 9, 0))
+    expect(parseQuickAdd('下个月15号 发工资', NOW).dueAt).toBe(localISO(2026, 12, 15, 9, 0))
+  })
+
+  it('单字时段：早8点 / 晚10点 / 今晚10点（晚间语境）', () => {
+    expect(parseQuickAdd('早8点 晨会', NOW).dueAt).toBe(localISO(2026, 11, 4, 8, 0))
+    expect(parseQuickAdd('晚10点 锁门', NOW).dueAt).toBe(localISO(2026, 11, 3, 22, 0))
+    expect(parseQuickAdd('今晚10点 洗漱', NOW).dueAt).toBe(localISO(2026, 11, 3, 22, 0))
+  })
+
+  it('中文优先级词：紧急/重要→P1，高优先级→P2', () => {
+    const urgent = parseQuickAdd('紧急 修复登录bug', NOW)
+    expect(urgent.priority).toBe(1)
+    expect(urgent.title).toBe('修复登录bug')
+    expect(parseQuickAdd('高优先级 复查合同', NOW).priority).toBe(2)
+    expect(parseQuickAdd('低优先级 归档', NOW).priority).toBe(4)
+  })
+
+  it('显式 p 值不被中文词覆盖；@重要 仍是标签', () => {
+    const r = parseQuickAdd('p2 紧急 修复', NOW)
+    expect(r.priority).toBe(2)
+    expect(r.title).toBe('修复')
+    const tagged = parseQuickAdd('@重要 整理资料', NOW)
+    expect(tagged.tags).toEqual(['重要'])
+    expect(tagged.priority).toBeNull()
+  })
+
+  it('回归保护：v1/v2 核心用例不回退', () => {
+    expect(parseQuickAdd('明天 9 点 写周报', NOW).dueAt).toBe(localISO(2026, 11, 4, 9, 0))
+    expect(parseQuickAdd('30分钟后 取快递', NOW).dueAt).toBe(new Date(NOW.getTime() + 30 * 60000).toISOString())
+    expect(parseQuickAdd('9号早上9点 交房租', NOW).dueAt).toBe(localISO(2026, 11, 9, 9, 0))
+    expect(parseQuickAdd('月底 盘点', NOW).dueAt).toBe(localISO(2026, 11, 30, 9, 0))
+  })
+})

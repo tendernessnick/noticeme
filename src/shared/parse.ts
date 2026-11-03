@@ -1,8 +1,9 @@
 // 快速添加的自然语言解析（纯函数，中英文混排）
-// 支持：今天/今晚/明天/后天/大后天、周X/下周X/下下周X、下周（裸）、周末、月底、N分钟后、N天后、
+// 支持：今天/今晚/明天/明早/明晚/后天/大后天、周X/星期X/礼拜X/下周X/下下周X、下周（裸）、周末、
+//       月初/月中/月底/年底、下个月(15号)、N分钟后、N小时后/半小时后、N天后/N天内、
 //       X月X日（日/号可省）、MM-DD、M/D、YYYY-MM-DD、裸X号/X日（自动选未来最近的）、
-//       HH:mm、X点/X点半/X点N分（含中文数字）、凌晨/早上/上午/中午/下午/晚上（可无具体时刻）、
-//       p1-p4（!1-!4）、#项目、@标签
+//       HH:mm、X点/X点半/X点N分（含中文数字、早/晚单字时段）、时段词默认时刻、
+//       p1-p4（!1-!4）、紧急/重要→P1、高/中/低优先级、#项目、@标签
 import type { Priority } from './types'
 import { addDays, startOfDay } from './datetime'
 
@@ -58,9 +59,9 @@ interface DateInfo {
 function applyMeridiem(h: number, mer: string | undefined): number {
   if (!mer) return h
   if (mer === '下午' || mer === '傍晚') return h < 12 ? h + 12 : h
-  if (mer === '晚上' || mer === '夜里') return h === 12 ? 24 : h < 12 ? h + 12 : h
+  if (mer === '晚上' || mer === '夜里' || mer === '晚') return h === 12 ? 24 : h < 12 ? h + 12 : h
   if (mer === '中午') return h <= 2 ? 12 + h : h
-  // 凌晨/清晨/早上/早晨/上午
+  // 凌晨/清晨/早上/早晨/上午/早
   return h === 12 ? 0 : h
 }
 
@@ -72,6 +73,9 @@ export function parseQuickAdd(input: string, now: Date = new Date()): ParsedQuic
   let relativeMinutes: number | null = null
   let dateInfo: DateInfo | null = null
   let isMonthEnd = false
+  let isYearEnd = false
+  /** 「今晚/明晚」语境：后续裸数字时刻（如「今晚10点」）按下午/晚间理解 */
+  let eveningContext = false
   let timeInfo: { h: number; min: number } | null = null
 
   // 1) 优先级：p1 / P2 / !3（独立词）
@@ -79,12 +83,39 @@ export function parseQuickAdd(input: string, now: Date = new Date()): ParsedQuic
     priority = Number(g1) as Priority
     return ' '
   })
+  // 1.1) 中文优先级词（独立词，不覆盖已显式给出的 p 值）
+  text = text.replace(/(?:^|\s)(紧急|重要|要紧)(?=\s|$)/g, () => {
+    if (priority === null) priority = 1
+    return ' '
+  })
+  text = text.replace(/(?:^|\s)高优先级(?=\s|$)/g, () => {
+    if (priority === null) priority = 2
+    return ' '
+  })
+  text = text.replace(/(?:^|\s)中优先级(?=\s|$)/g, () => {
+    if (priority === null) priority = 3
+    return ' '
+  })
+  text = text.replace(/(?:^|\s)低优先级(?=\s|$)/g, () => {
+    if (priority === null) priority = 4
+    return ' '
+  })
 
-  // 2) 相对时间：N分钟后（必须带「后」）
+  // 2) 相对时间
+  //    N分钟后（必须带「后」）
   text = text.replace(/(\d{1,4})\s*分钟后/g, (_m, g1: string) => {
     relativeMinutes = Number(g1)
     return ' '
   })
+  //    N小时后 / 半小时后 / 三小时之后
+  const hoursLater = text.match(/(半|(\d{1,2}|[一二两三四五六七八九十]+))\s*小时\s*(?:之|过)?后/)
+  if (hoursLater) {
+    const n = hoursLater[1] === '半' ? 0.5 : cnNum(hoursLater[2])
+    if (!Number.isNaN(n) && n > 0 && n <= 72) {
+      relativeMinutes = Math.round(n * 60)
+      text = text.replace(hoursLater[0], ' ')
+    }
+  }
 
   // 2.1) 项目与标签先提取（防止 @周末、#6月会 之类被日期解析误伤）
   const pm = text.match(/#([^\s#@]+)/)
@@ -103,8 +134,8 @@ export function parseQuickAdd(input: string, now: Date = new Date()): ParsedQuic
     const daysInMonth = (y: number, m0: number): number => new Date(y, m0 + 1, 0).getDate()
     const mkInfo = (y: number, m: number, d: number, yearless = false): DateInfo => ({ y, m, d, yearless })
 
-    // 3.1) N天后 / N天之后（含中文数字）
-    const daysLater = text.match(new RegExp(`(${CN_NUM})\\s*天\\s*(?:之|过)?\\s*后`))
+    // 3.1) N天后 / 三天之后 / N天内 / 三天之内（含中文数字；「内」按截止语义同样向前推 N 天）
+    const daysLater = text.match(new RegExp(`(${CN_NUM})\\s*天\\s*(?:之|过)?\\s*(?:后|内)`))
     if (daysLater) {
       const n = cnNum(daysLater[1])
       if (!Number.isNaN(n) && n >= 0 && n <= 365) {
@@ -114,25 +145,35 @@ export function parseQuickAdd(input: string, now: Date = new Date()): ParsedQuic
       }
     }
 
-    // 3.2) 今天/今晚/明天/后天/大后天
+    // 3.2) 今天/今早/今晚/明天/明早/明晚/后天/大后天
     if (!dateInfo) {
-      const rel = text.match(/(大后天|后天|明天|明日|今晚|今天|今日)/)
+      const rel = text.match(/(大后天|后天|明晚|明早|今早|明天|明日|今晚|今天|今日)/)
       if (rel) {
         const w = rel[1]
-        const add = w === '明天' || w === '明日' ? 1 : w === '后天' ? 2 : w === '大后天' ? 3 : 0
+        let add = 0
+        let forcedHour: number | null = null
+        if (w === '明天' || w === '明日') add = 1
+        else if (w === '后天') add = 2
+        else if (w === '大后天') add = 3
+        else if (w === '明早') { add = 1; forcedHour = 8 }
+        else if (w === '明晚') { add = 1; forcedHour = 20; eveningContext = true }
+        else if (w === '今晚') eveningContext = true
+        else if (w === '今早') { forcedHour = 8 }
         const d = addDays(today, add)
         dateInfo = mkInfo(d.getFullYear(), d.getMonth() + 1, d.getDate())
-        // 「今晚」且未显式给时间 → 默认 20:00
-        if (w === '今晚' && !/\d{1,2}\s*[点时]|\d{1,2}:\d{2}/.test(text.replace(rel[0], ''))) {
-          timeInfo = { h: 20, min: 0 }
+        // 后文没有显式时刻时，才使用词条自带默认时刻
+        const hasExplicitTime = /\d{1,2}\s*[点时]|\d{1,2}:\d{2}/.test(text.replace(rel[0], ''))
+        if (!hasExplicitTime) {
+          if (forcedHour !== null) timeInfo = { h: forcedHour, min: 0 }
+          else if (w === '今晚') timeInfo = { h: 20, min: 0 }
         }
         text = text.replace(rel[0], ' ')
       }
     }
 
-    // 3.3) 周X / 星期X / 下周X（「下」前缀必须与「周X」整体匹配，避免可选组回溯丢失前缀）
+    // 3.3) 周X / 星期X / 礼拜X / 下周X / 下礼拜X（「下」前缀必须与「周X」整体匹配，避免可选组回溯丢失前缀）
     if (!dateInfo) {
-      const wm = text.match(/(下{1,2})?(?:周|星期)([一二三四五六日天])/)
+      const wm = text.match(/(下{1,2})?(?:周|星期|礼拜)([一二三四五六日天])/)
       if (wm) {
         const target = WEEKDAY_CN[wm[2]] ?? 1
         const weeks = wm[1] ? wm[1].length : 0 // 下=1，下下=2
@@ -169,13 +210,29 @@ export function parseQuickAdd(input: string, now: Date = new Date()): ParsedQuic
       }
     }
 
-    // 3.6) 绝对日期
+    // 3.6) 下个月 / 下月（可带日子：下个月15号；不带则取同日，超出月末自动钳制）
+    if (!dateInfo) {
+      const nm = text.match(new RegExp(`下个?月\\s*(?:(${CN_NUM})\\s*[号日]?)?`))
+      if (nm) {
+        let y = now.getFullYear()
+        let m0 = now.getMonth() + 1
+        if (m0 > 11) {
+          m0 = 0
+          y += 1
+        }
+        const day = nm[1] ? cnNum(nm[1]) : now.getDate()
+        dateInfo = mkInfo(y, m0 + 1, Math.min(Math.max(1, day), daysInMonth(y, m0)))
+        text = text.replace(nm[0], ' ')
+      }
+    }
+
+    // 3.7) 绝对日期
     if (!dateInfo) {
       const ymd = text.match(/(\d{4})-(\d{1,2})-(\d{1,2})/)
       const mdCn = text.match(/(\d{1,2})月\s*(\d{1,2})[日号]?/) // 日/号可省略：11月9
       const mdSlash = text.match(/(\d{1,2})\/(\d{1,2})/)
       const bareDay = text.match(new RegExp(`(${CN_NUM})\\s*[号日]`)) // 裸几号：9号 / 十九号
-      const monthEnd = text.match(/月底|月末/)
+      const anchor = text.match(/(年底|年末|月初|月中|月末|月底)/)
       if (ymd) {
         dateInfo = mkInfo(Number(ymd[1]), Number(ymd[2]), Number(ymd[3]))
         text = text.replace(ymd[0], ' ')
@@ -211,10 +268,29 @@ export function parseQuickAdd(input: string, now: Date = new Date()): ParsedQuic
           dateInfo = mkInfo(y, m0 + 1, Math.min(day, daysInMonth(y, m0)), true)
           text = text.replace(bareDay[0], ' ')
         }
-      } else if (monthEnd) {
-        dateInfo = mkInfo(now.getFullYear(), now.getMonth() + 1, daysInMonth(now.getFullYear(), now.getMonth()))
-        isMonthEnd = true
-        text = text.replace(monthEnd[0], ' ')
+      } else if (anchor) {
+        const a = anchor[1]
+        if (a === '月底' || a === '月末') {
+          dateInfo = mkInfo(now.getFullYear(), now.getMonth() + 1, daysInMonth(now.getFullYear(), now.getMonth()))
+          isMonthEnd = true
+        } else if (a === '年底' || a === '年末') {
+          dateInfo = mkInfo(now.getFullYear(), 12, 31)
+          isYearEnd = true
+        } else {
+          // 月初 → 1 日；月中 → 15 日（若本月已过则顺延到下个月）
+          const day = a === '月初' ? 1 : 15
+          let y = now.getFullYear()
+          let m0 = now.getMonth()
+          if (day < now.getDate()) {
+            m0 += 1
+            if (m0 > 11) {
+              m0 = 0
+              y += 1
+            }
+          }
+          dateInfo = mkInfo(y, m0 + 1, day)
+        }
+        text = text.replace(anchor[0], ' ')
       }
       // 无年份的过去日期 → 明年
       if (dateInfo?.yearless) {
@@ -227,22 +303,24 @@ export function parseQuickAdd(input: string, now: Date = new Date()): ParsedQuic
   // 4) 时间
   const colon = text.match(/(\d{1,2}):(\d{2})/)
   if (colon) {
-    const h = Number(colon[1])
+    let h = Number(colon[1])
     const min = Number(colon[2])
     if (h <= 23 && min <= 59) {
+      if (eveningContext && h < 12) h += 12 // 今晚10:30 → 22:30
       timeInfo = { h, min }
       text = text.replace(colon[0], ' ')
     }
   }
   if (!timeInfo) {
     const oclock = text.match(
-      new RegExp(`(凌晨|清晨|早上|早晨|上午|中午|下午|傍晚|晚上|夜里)?\\s*(${CN_NUM})\\s*[点时](?:半|(${CN_NUM})\\s*分?)?`)
+      new RegExp(`(凌晨|清晨|早上|早晨|上午|中午|下午|傍晚|晚上|夜里|早|晚)?\\s*(${CN_NUM})\\s*[点时](?:半|(${CN_NUM})\\s*分?)?`)
     )
     if (oclock) {
       const mer = oclock[1]
-      const hRaw = cnNum(oclock[2])
+      let hRaw = cnNum(oclock[2])
       const mRaw = oclock[3] ? cnNum(oclock[3]) : 0
       if (!Number.isNaN(hRaw) && hRaw <= 24 && mRaw <= 59) {
+        if (eveningContext && !mer && hRaw < 12) hRaw += 12 // 今晚9点 → 21:00
         timeInfo = { h: applyMeridiem(hRaw, mer), min: oclock[0].includes('半') ? 30 : mRaw }
         text = text.replace(oclock[0], ' ')
       }
@@ -268,9 +346,10 @@ export function parseQuickAdd(input: string, now: Date = new Date()): ParsedQuic
   } else if (dateInfo) {
     const t = timeInfo ?? { h: DEFAULT_HOUR, min: 0 }
     const dt = new Date(dateInfo.y, dateInfo.m - 1, dateInfo.d, t.h, t.min)
-    // 只给了日期没给时间：若该日默认时刻已过 → 明天（月底则顺延到下个月底）
+    // 只给了日期没给时间：若该日默认时刻已过 → 顺延（月底→下个月底，年底→明年年底，其余→明天）
     if (!timeInfo && dt.getTime() <= now.getTime()) {
       if (isMonthEnd) dt.setMonth(dt.getMonth() + 2, 0)
+      else if (isYearEnd) dt.setFullYear(dt.getFullYear() + 1, 11, 31)
       else dt.setDate(dt.getDate() + 1)
     }
     dueDate = dt
