@@ -19,6 +19,7 @@ npm run dev        # 开发模式启动（热更新）
 | `npm run test` | vitest 单元测试（46 用例） |
 | `npm run smoke` | 冒烟测试：自动注入演示数据、截图（主界面/提醒卡片/暗色）到 `smoke-out/` 后退出；使用独立临时数据目录，**不污染真实数据** |
 | `npm run dist` | 打包 Windows 安装包 + 便携版到 `dist/` |
+| `npm run release` | 发布一条龙：typecheck → 单测 → 打包 → 上传 GitHub Release（需 gh CLI 已登录） |
 | `npm run gen:assets` | 重新生成图标/提示音资产（一般无需执行） |
 
 ## 数据位置
@@ -69,6 +70,24 @@ npm run dist
 - `win.signAndEditExecutable: false`：绕过 winCodeSign 符号链接特权问题（无开发者模式的机器）；代价是 exe 文件图标为默认，运行期图标不受影响
 - NSIS 工具链网络受限时设置镜像：`ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/`
 - 若报 `Plugin not found ... UAC`：把 `%LOCALAPPDATA%\electron-builder\Cache\nsis\<临时目录>\plugins\x86-unicode\*.dll` 拷入 `nsis-3.0.4.1\Plugins\x86-unicode\` 后重试
+
+## 发布 Release（GitHub）
+
+安装包通过 GitHub Releases 分发，**不进 git 仓库**（`dist/` 保持 gitignore，仓库只存源码与文档）。
+
+前置条件：gh CLI 已安装并登录（`gh auth status` 检查；未登录时 `gh auth login -h github.com -p https -w` 走浏览器设备码授权）。
+
+```bash
+# 一键发布（先升 package.json 版本号，再执行；自动 typecheck+测试+打包+上传）
+npm run release
+
+# 或手动分步
+npm run dist
+gh release create v0.1.3 dist/NoticeMe-Setup-0.1.3.exe dist/NoticeMe-Portable-0.1.3.exe \
+  --title "NoticeMe v0.1.3" --notes "更新说明"
+```
+
+发布后安装包出现在 `https://github.com/tendernessnick/noticeme/releases`，供任何机器直接下载安装。
 
 ## 故障排查
 
