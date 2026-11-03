@@ -1,9 +1,10 @@
 // NoticeMe 主进程：生命周期 / IPC / 烟雾测试钩子
 import { app, BrowserWindow, dialog, ipcMain } from './electron-shims'
 import { join } from 'node:path'
-import { mkdirSync, writeFileSync, readFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
+import { spawn } from 'node:child_process'
 import { Store } from './store'
 import { Scheduler } from './scheduler'
 import { AlertManager } from './alerts'
@@ -32,6 +33,8 @@ let store: Store
 let scheduler: Scheduler
 let alerts: AlertManager
 let quitting = false
+/** 提示音的本地真实路径（打包时从 asar 拷出，供系统播放器读取） */
+let chimeFile = ''
 
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
@@ -139,6 +142,27 @@ function setDoneInternal(id: string, done: boolean): void {
   broadcastDb()
 }
 
+/** 用系统播放器播放提示音（不依赖任何窗口状态，规避渲染端竞态） */
+function playChimeSound(): void {
+  if (!chimeFile) return
+  try {
+    const ps = spawn(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-WindowStyle',
+        'Hidden',
+        '-Command',
+        `(New-Object System.Media.SoundPlayer '${chimeFile.replace(/'/g, "''")}').PlaySync()`
+      ],
+      { stdio: 'ignore', windowsHide: true }
+    )
+    ps.unref()
+  } catch {
+    /* 播放失败不影响提醒本身 */
+  }
+}
+
 function onFires(fires: FireItem[]): void {
   const s = store.get().settings
   const db = store.get()
@@ -153,6 +177,7 @@ function onFires(fires: FireItem[]): void {
   const showCard = s.notifyMode !== 'toast'
   const showToastMsg = s.notifyMode === 'toast' || s.notifyMode === 'both'
   if (showCard) alerts.show(entries)
+  if (s.soundOn) playChimeSound()
   if (showToastMsg) {
     const icon = resourcePath('icon.png')
     for (const f of fires) {
@@ -385,6 +410,14 @@ async function runSmoke(): Promise<void> {
 
 app.whenReady().then(() => {
   store = new Store(app.getPath('userData'))
+
+  // 提示音拷贝到真实文件路径（PowerShell 播放器无法读取 asar 内部路径）
+  try {
+    chimeFile = join(app.getPath('userData'), 'chime.wav')
+    copyFileSync(resourcePath('chime.wav'), chimeFile)
+  } catch {
+    chimeFile = resourcePath('chime.wav')
+  }
 
   alerts = new AlertManager({
     getSettings: () => store.get().settings,

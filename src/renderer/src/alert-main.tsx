@@ -1,5 +1,6 @@
 // 提醒弹窗页面（无边框置顶窗口）
-import { useEffect, useRef, useState } from 'react'
+// 提示音由主进程在触发瞬间直接播放（系统级，更可靠）；本页只负责展示与操作，并回报实际高度让窗口贴合内容
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { BellRing, X, Check, AlarmClockPlus, ExternalLink } from 'lucide-react'
 import type { AlertEntry } from '../../shared/types'
 import { formatDueLabel, formatSnoozeLabel, isDuePast } from '../../shared/datetime'
@@ -16,39 +17,29 @@ const FALLBACK_PRESETS = [5, 10, 30, 60, 1440]
 export default function AlertApp(): JSX.Element {
   const [payload, setPayload] = useState<Payload>({ items: [], presets: FALLBACK_PRESETS })
   const [snoozeOpen, setSnoozeOpen] = useState<string | null>(null)
-  const soundRef = useRef(true)
-  const chimeRef = useRef('')
-  const lastCountRef = useRef(0)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  // 实测内容高度回报主进程 → 窗口精确贴合卡片、底边贴住任务栏
+  useLayoutEffect(() => {
+    const el = rootRef.current
+    if (!el) return
+    const report = (): void => {
+      const h = Math.ceil(el.getBoundingClientRect().height)
+      if (h > 0) void window.noticeme.alertResize(h)
+    }
+    report()
+    const ro = new ResizeObserver(report)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   useEffect(() => {
-    void window.noticeme
-      .getDb()
-      .then(db => {
-        soundRef.current = db.settings.soundOn
-      })
-      .catch(() => undefined)
-    void window.noticeme.getChime().then(url => {
-      chimeRef.current = url
-    })
     // 挂载时主动同步一次（防止加载期推送丢失）
     void window.noticeme
       .alertSync()
-      .then(p => {
-        setPayload(p)
-        lastCountRef.current = p.items.length
-      })
+      .then(setPayload)
       .catch(() => undefined)
-    window.noticeme.onAlertQueue(p => {
-      setPayload(p)
-      if (p.items.length > lastCountRef.current && soundRef.current && chimeRef.current) {
-        try {
-          void new Audio(chimeRef.current).play()
-        } catch {
-          /* ignore */
-        }
-      }
-      lastCountRef.current = p.items.length
-    })
+    window.noticeme.onAlertQueue(setPayload)
   }, [])
 
   const act = (type: 'complete' | 'snooze' | 'open' | 'dismiss', taskId: string, minutes?: number): void => {
@@ -57,7 +48,7 @@ export default function AlertApp(): JSX.Element {
   }
 
   return (
-    <div className="select-none p-2 font-sans text-[13px] text-zinc-100">
+    <div ref={rootRef} className="select-none p-2 font-sans text-[13px] text-zinc-100">
       <div className="overflow-hidden rounded-2xl border border-zinc-700/70 bg-zinc-900/95 shadow-pop backdrop-blur">
         <div className="flex items-center gap-2 px-4 pb-1 pt-2.5">
           <BellRing size={13} className="text-accent" />

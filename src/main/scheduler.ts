@@ -2,7 +2,7 @@
 import type { Store } from './store'
 import { collectFires, type FireItem } from '../shared/scheduler-core'
 
-const TICK_MS = 10_000
+const TICK_MS = 5_000
 const WAKE_MS = 400
 
 export class Scheduler {

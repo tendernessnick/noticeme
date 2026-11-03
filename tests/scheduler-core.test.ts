@@ -42,7 +42,18 @@ describe('collectFires · 到点触发', () => {
     const db = makeDb({ tasks: [t] })
     const res = collectFires(db, NOW_MS, WINDOW)
     expect(res.fires).toHaveLength(1)
-    expect(new Date(res.fires[0].fireAt).getTime()).toBe(NOW_MS - 2 * 60000)
+    // 提前量 REMINDER_LEAD_SECONDS=10：提醒点 = 截止 - 5分钟 - 10秒
+    expect(new Date(res.fires[0].fireAt).getTime()).toBe(NOW_MS - 2 * 60000 - 10_000)
+  })
+
+  it('到点前 10 秒即触发（提前量）', () => {
+    const due = new Date(NOW_MS + 5_000).toISOString() // 5 秒后截止
+    const t = taskWithReminder(due)
+    const db = makeDb({ tasks: [t] })
+    const res = collectFires(db, NOW_MS, WINDOW)
+    expect(res.fires).toHaveLength(1)
+    // fireAt = 截止时刻 - 提前量 = now + 5s - 10s = now - 5s
+    expect(new Date(res.fires[0].fireAt).getTime()).toBe(NOW_MS - 5_000)
   })
 
   it('未到提醒点 → 不触发', () => {

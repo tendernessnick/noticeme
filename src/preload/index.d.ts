@@ -22,6 +22,7 @@ export interface NoticeMeApi {
   getChime(): Promise<string>
   alertAction(p: AlertActionPayload): Promise<void>
   alertSync(): Promise<{ items: AlertEntry[]; presets: number[] }>
+  alertResize(h: number): Promise<void>
   onDbUpdated(cb: (db: Database) => void): () => void
   onUi(cb: (p: UiEvent) => void): () => void
   onAlertQueue(cb: (p: { items: AlertEntry[]; presets: number[] }) => void): () => void

@@ -13,6 +13,9 @@ export interface FireItem {
   dueAt: string | null
 }
 
+/** 提醒提前量（秒）：到点前 10 秒弹出，弹窗出现时恰好卡在设定时刻 */
+export const REMINDER_LEAD_SECONDS = 10
+
 export interface CollectResult {
   fires: FireItem[]
   /** 需要标记为已消费的键（包含补发与窗口外静默消费） */
@@ -53,7 +56,8 @@ export function collectFires(db: Database, nowMs: number, missedWindowMs: number
     const dueMs = new Date(task.dueAt).getTime()
     for (const r of task.reminders) {
       const offsetMin = r.offsetMin ?? 0
-      const fireMs = dueMs - offsetMin * 60000
+      // 提前量：比设定时刻早 REMINDER_LEAD_SECONDS 秒弹出
+      const fireMs = dueMs - offsetMin * 60000 - REMINDER_LEAD_SECONDS * 1000
       const key = `${task.id}:${r.id}:${task.dueAt}`
       if (fired.has(key)) continue
       if (fireMs <= nowMs) {

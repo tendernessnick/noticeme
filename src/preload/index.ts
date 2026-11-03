@@ -27,6 +27,7 @@ const api = {
   alertAction: (p: AlertActionPayload): Promise<void> => ipcRenderer.invoke('alert:action', p),
   alertSync: (): Promise<{ items: unknown[]; presets: number[] }> =>
     ipcRenderer.invoke('alert:sync'),
+  alertResize: (h: number): Promise<void> => ipcRenderer.invoke('alert:resize', h),
   onDbUpdated: (cb: (db: Database) => void): (() => void) => {
     const l = (_e: unknown, db: Database): void => cb(db)
     ipcRenderer.on('db:updated', l as never)
