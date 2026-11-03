@@ -18,8 +18,40 @@ describe('Store', () => {
     const db = store.get()
     expect(db.projects.some(p => p.id === 'inbox')).toBe(true)
     expect(db.tasks).toHaveLength(1)
-    expect(db.settings.notifyAlert).toBe(true)
+    expect(db.settings.notifyMode).toBe('card')
     expect(db.settings.snoozePresets).toContain(10)
+  })
+
+  it('旧版本设置（独立双开关）自动迁移为 notifyMode', () => {
+    // 双开（旧行为会重复提醒）→ 收敛为仅卡片
+    writeFileSync(
+      join(dir, 'data.json'),
+      JSON.stringify({
+        version: 1,
+        tasks: [{ id: 't1', title: '旧任务' }],
+        projects: [{ id: 'inbox', name: '收集箱', color: '#6366f1', createdAt: '2026-01-01T00:00:00.000Z' }],
+        settings: { notifyAlert: true, notifyToast: true }
+      }),
+      'utf-8'
+    )
+    const store = new Store(dir)
+    expect(store.get().settings.notifyMode).toBe('card')
+    expect(store.get().tasks.some(t => t.title === '旧任务')).toBe(true)
+
+    // 仅系统通知 → toast
+    const dir2 = mkdtempSync(join(tmpdir(), 'noticeme-store-'))
+    writeFileSync(
+      join(dir2, 'data.json'),
+      JSON.stringify({
+        version: 1,
+        tasks: [],
+        projects: [{ id: 'inbox', name: '收集箱', color: '#6366f1', createdAt: '2026-01-01T00:00:00.000Z' }],
+        settings: { notifyAlert: false, notifyToast: true }
+      }),
+      'utf-8'
+    )
+    const store2 = new Store(dir2)
+    expect(store2.get().settings.notifyMode).toBe('toast')
   })
 
   it('mutate 后持久化，重新加载可读回（往返）', () => {

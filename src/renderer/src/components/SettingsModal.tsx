@@ -1,7 +1,13 @@
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Volume2, X } from 'lucide-react'
-import type { Settings, ThemeMode } from '../../../shared/types'
+import type { NotifyMode, Settings, ThemeMode } from '../../../shared/types'
 import { useStore } from '../store'
+
+const NOTIFY_MODES: Array<[NotifyMode, string]> = [
+  ['card', '卡片'],
+  ['toast', '系统通知'],
+  ['both', '同时']
+]
 
 export default function SettingsModal(): JSX.Element {
   const db = useStore(s => s.db)!
@@ -68,11 +74,22 @@ export default function SettingsModal(): JSX.Element {
         </Section>
 
         <Section title="提醒">
-          <Row label="置顶弹窗卡片" desc="推荐开启，最可靠">
-            <Switch checked={s.notifyAlert} onChange={v => patch({ notifyAlert: v })} />
-          </Row>
-          <Row label="Windows 系统通知" desc="进入系统通知中心">
-            <Switch checked={s.notifyToast} onChange={v => patch({ notifyToast: v })} />
+          <Row label="提醒方式" desc="卡片不抢焦点；系统通知留存到 Windows 通知中心">
+            <div className="flex overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700">
+              {NOTIFY_MODES.map(([mode, label]) => (
+                <button
+                  key={mode}
+                  onClick={() => patch({ notifyMode: mode })}
+                  className={`px-2.5 py-1 text-xs font-medium transition ${
+                    s.notifyMode === mode
+                      ? 'bg-accent text-white'
+                      : 'text-zinc-500 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </Row>
           <Row label="提示音">
             <div className="flex items-center gap-1">

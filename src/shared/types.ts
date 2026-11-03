@@ -49,12 +49,12 @@ export interface Snooze {
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 
+/** 提醒方式：card=置顶弹窗卡片（默认） toast=Windows 系统通知 both=两者同时 */
+export type NotifyMode = 'card' | 'toast' | 'both'
+
 export interface Settings {
   theme: ThemeMode
-  /** 置顶弹窗提醒卡片 */
-  notifyAlert: boolean
-  /** Windows 系统通知 */
-  notifyToast: boolean
+  notifyMode: NotifyMode
   /** 提示音 */
   soundOn: boolean
   autostart: boolean

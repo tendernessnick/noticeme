@@ -20,8 +20,7 @@ export const PROJECT_PALETTE = [
 export function defaultSettings(): Settings {
   return {
     theme: 'system',
-    notifyAlert: true,
-    notifyToast: true,
+    notifyMode: 'card',
     soundOn: true,
     autostart: false,
     closeToTray: true,
@@ -87,18 +86,29 @@ export function createDefaultDb(): Database {
   }
 }
 
-/** 校验导入/读取的数据形状（宽松校验，缺省字段用默认值补齐） */
+/** 校验导入/读取的数据形状（宽松校验，缺省字段用默认值补齐，含旧版本字段迁移） */
 export function sanitizeDb(raw: unknown): Database | null {
   if (!raw || typeof raw !== 'object') return null
   const r = raw as Partial<Database>
   if (!Array.isArray(r.tasks) || !Array.isArray(r.projects)) return null
-  const base = createDefaultDb()
+  const legacy = (r.settings ?? {}) as Partial<Settings> & {
+    notifyAlert?: boolean
+    notifyToast?: boolean
+  }
+  const settings = { ...defaultSettings(), ...legacy } as Settings
+  if (!legacy.notifyMode) {
+    // 旧版本迁移：只有 notifyAlert/notifyToast 两个独立开关。
+    // 旧的「双开」会造成同一提醒出现两次（卡片 + 系统通知），统一收敛为仅卡片；
+    // 仅开过系统通知的用户迁移为 toast。
+    if (legacy.notifyAlert === false && legacy.notifyToast === true) settings.notifyMode = 'toast'
+    else settings.notifyMode = 'card'
+  }
   return {
     version: DATA_VERSION,
     tasks: r.tasks.filter(t => t && typeof t.id === 'string' && typeof t.title === 'string'),
     projects: r.projects.filter(p => p && typeof p.id === 'string' && typeof p.name === 'string'),
     snoozes: Array.isArray(r.snoozes) ? r.snoozes : [],
-    settings: { ...defaultSettings(), ...(r.settings ?? {}) },
+    settings,
     firedKeys: Array.isArray(r.firedKeys) ? r.firedKeys : [],
     updatedAt: new Date().toISOString()
   } as Database

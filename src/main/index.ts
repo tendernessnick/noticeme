@@ -149,8 +149,11 @@ function onFires(fires: FireItem[]): void {
     dueAt: f.dueAt,
     fireAt: f.fireAt
   }))
-  if (s.notifyAlert) alerts.show(entries)
-  if (s.notifyToast) {
+  // 提醒方式：card=仅置顶卡片（默认） toast=仅系统通知 both=两者同时（通知中心留痕）
+  const showCard = s.notifyMode !== 'toast'
+  const showToastMsg = s.notifyMode === 'toast' || s.notifyMode === 'both'
+  if (showCard) alerts.show(entries)
+  if (showToastMsg) {
     const icon = resourcePath('icon.png')
     for (const f of fires) {
       const task = db.tasks.find(t => t.id === f.taskId)

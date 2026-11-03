@@ -41,7 +41,7 @@
 - `Reminder`：`{ id, offsetMin: number|null }`（null=准时，N=提前 N 分钟）
 - `RepeatRule`：`{ freq: daily|weekdays|weekly|monthly|yearly, interval? }`
 - `Snooze`：`{ id, taskId, fireAt }`（持久化，重启存活）
-- `Settings`：主题/三种提醒开关/自启/关到托盘/两个快捷键/贪睡预设/循环提醒/补发窗口
+- `Settings`：主题/提醒方式 notifyMode（card 卡片默认 · toast 系统通知 · both 两者，旧版双开关数据自动迁移）/自启/关到托盘/两个快捷键/贪睡预设/循环提醒/补发窗口
 - `Database`：`{ version, tasks, projects, snoozes, settings, firedKeys[], updatedAt }`
 - `firedKeys`：`taskId:reminderId:dueAt` 防重键（上限 500 修剪），跨重启防重复弹
 
