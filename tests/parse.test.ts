@@ -130,3 +130,61 @@ describe('parseQuickAdd · 项目与标签', () => {
     expect(r.title).toBe('整理房间')
   })
 })
+
+describe('parseQuickAdd · 模糊日期 v2（裸几号/天后/裸下周/周末/月底/时段默认）', () => {
+  it('裸「9号」→ 本月 9 日（未过）', () => {
+    const r = parseQuickAdd('9号 交房租', NOW)
+    expect(r.dueAt).toBe(localISO(2026, 11, 9, 9, 0))
+    expect(r.title).toBe('交房租')
+  })
+
+  it('用户原始场景：「9号早上9点」→ 11月9日 09:00', () => {
+    const r = parseQuickAdd('9号早上9点 交房租', NOW)
+    expect(r.dueAt).toBe(localISO(2026, 11, 9, 9, 0))
+    expect(r.title).toBe('交房租')
+  })
+
+  it('过去的天数自动顺延下月：「1号」→ 12月1日', () => {
+    const r = parseQuickAdd('1号 发工资', NOW)
+    expect(r.dueAt).toBe(localISO(2026, 12, 1, 9, 0))
+  })
+
+  it('当月不存在的日期顺延：「31号」「三十一号」→ 12月31日', () => {
+    expect(parseQuickAdd('31号 跨年', NOW).dueAt).toBe(localISO(2026, 12, 31, 9, 0))
+    expect(parseQuickAdd('三十一号 年终奖', NOW).dueAt).toBe(localISO(2026, 12, 31, 9, 0))
+  })
+
+  it('N天后 / N天之后', () => {
+    expect(parseQuickAdd('3天后 复盘', NOW).dueAt).toBe(localISO(2026, 11, 6, 9, 0))
+    expect(parseQuickAdd('三天之后 总结', NOW).dueAt).toBe(localISO(2026, 11, 6, 9, 0))
+  })
+
+  it('裸「下周」→ 下周一；「下下周」→ 下下周一', () => {
+    expect(parseQuickAdd('下周 复盘', NOW).dueAt).toBe(localISO(2026, 11, 9, 9, 0))
+    expect(parseQuickAdd('下下周 复盘', NOW).dueAt).toBe(localISO(2026, 11, 16, 9, 0))
+  })
+
+  it('周末 → 本周六；下周末 → 下周六', () => {
+    expect(parseQuickAdd('周末 体检', NOW).dueAt).toBe(localISO(2026, 11, 7, 9, 0))
+    expect(parseQuickAdd('下周末 露营', NOW).dueAt).toBe(localISO(2026, 11, 14, 9, 0))
+  })
+
+  it('月底 → 本月最后一天', () => {
+    expect(parseQuickAdd('月底 盘点', NOW).dueAt).toBe(localISO(2026, 11, 30, 9, 0))
+  })
+
+  it('只有时段词 → 时段默认时刻', () => {
+    expect(parseQuickAdd('明天下午 交报告', NOW).dueAt).toBe(localISO(2026, 11, 4, 14, 0))
+    expect(parseQuickAdd('明天晚上 洗衣服', NOW).dueAt).toBe(localISO(2026, 11, 4, 20, 0))
+    expect(parseQuickAdd('明天上午 晨读', NOW).dueAt).toBe(localISO(2026, 11, 4, 9, 0))
+  })
+
+  it('月日省略单位：「11月9」→ 11月9日', () => {
+    expect(parseQuickAdd('11月9 整理', NOW).dueAt).toBe(localISO(2026, 11, 9, 9, 0))
+  })
+
+  it('回归保护：周X 不被裸日期误伤', () => {
+    expect(parseQuickAdd('周日 写周报', NOW).dueAt).toBe(localISO(2026, 11, 8, 9, 0))
+    expect(parseQuickAdd('周五 交报告', NOW).dueAt).toBe(localISO(2026, 11, 6, 9, 0))
+  })
+})
