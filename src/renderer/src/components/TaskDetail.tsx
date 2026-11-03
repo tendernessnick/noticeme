@@ -52,6 +52,15 @@ export default function TaskDetail({ task }: { task: Task }): JSX.Element {
     setTagText(task.tags.join(', '))
   }, [task.id, task.updatedAt])
 
+  // Esc 关闭抽屉
+  useEffect(() => {
+    const h = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') useStore.getState().selectTask(null)
+    }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [])
+
   /** 离散修改立即保存 */
   const save = (patch: Partial<Task>): void => {
     const next = { ...draft, ...patch }

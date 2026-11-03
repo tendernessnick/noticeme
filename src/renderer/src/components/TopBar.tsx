@@ -1,5 +1,6 @@
 import { Search } from 'lucide-react'
 import { useStore } from '../store'
+import { START_OF_TODAY } from '../utils/ui'
 
 const TITLES: Record<string, { title: string; sub?: string }> = {
   today: { title: '今天' },
@@ -24,13 +25,35 @@ export default function TopBar(): JSX.Element {
   }
   const activeCount = db.tasks.filter(t => !t.done).length
 
+  // 今日完成度（截止在今天及今天之前的任务）
+  const start = START_OF_TODAY()
+  const end = start + 86400000
+  const todays = db.tasks.filter(t => t.dueAt && new Date(t.dueAt).getTime() < end)
+  const doneToday = todays.filter(t => t.done).length
+  const progress = todays.length > 0 ? Math.round((doneToday / todays.length) * 100) : 0
+
   return (
     <div className="flex items-center gap-4 px-6 pb-2 pt-4">
       <div className="min-w-0">
         <h1 className="truncate text-xl font-bold leading-tight">{title}</h1>
-        <p className="mt-0.5 text-xs text-zinc-400">
-          {dateLabel} · {activeCount} 项待办
-        </p>
+        <div className="mt-0.5 flex items-center gap-2">
+          <p className="text-xs text-zinc-400">
+            {dateLabel} · {activeCount} 项待办
+          </p>
+          {todays.length > 0 && (
+            <span className="flex items-center gap-1.5" title={`今日完成 ${doneToday}/${todays.length}`}>
+              <span className="h-1.5 w-16 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
+                <span
+                  className="block h-full rounded-full bg-emerald-500 transition-all"
+                  style={{ width: `${progress}%` }}
+                />
+              </span>
+              <span className="text-[11px] tabular-nums text-emerald-600 dark:text-emerald-400">
+                {doneToday}/{todays.length}
+              </span>
+            </span>
+          )}
+        </div>
       </div>
       <div className="relative ml-auto w-60 shrink-0">
         <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />

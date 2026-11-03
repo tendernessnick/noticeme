@@ -259,3 +259,29 @@ describe('parseQuickAdd · 模糊日期 v3（小时偏移/明早明晚/礼拜/�
     expect(parseQuickAdd('月底 盘点', NOW).dueAt).toBe(localISO(2026, 11, 30, 9, 0))
   })
 })
+
+describe('parseQuickAdd · 模糊时间 v4（刻钟/分钟内/小时钟头/一刻三刻/点整）', () => {
+  it('刻钟：一刻钟后 / 三刻钟后 / 两刻钟内（每刻 15 分钟）', () => {
+    expect(parseQuickAdd('一刻钟后 回电', NOW).dueAt).toBe(new Date(NOW.getTime() + 15 * 60000).toISOString())
+    expect(parseQuickAdd('三刻钟后 出发', NOW).dueAt).toBe(new Date(NOW.getTime() + 45 * 60000).toISOString())
+    expect(parseQuickAdd('两刻钟内 提交', NOW).dueAt).toBe(new Date(NOW.getTime() + 30 * 60000).toISOString())
+  })
+
+  it('N分钟内 / N分钟之后', () => {
+    expect(parseQuickAdd('10分钟内 回复', NOW).dueAt).toBe(new Date(NOW.getTime() + 10 * 60000).toISOString())
+    expect(parseQuickAdd('5分钟之后 起身', NOW).dueAt).toBe(new Date(NOW.getTime() + 5 * 60000).toISOString())
+  })
+
+  it('N个小时内 / 两个钟头后', () => {
+    expect(parseQuickAdd('2个小时内 出门', NOW).dueAt).toBe(new Date(NOW.getTime() + 120 * 60000).toISOString())
+    expect(parseQuickAdd('两个钟头后 汤就好', NOW).dueAt).toBe(new Date(NOW.getTime() + 120 * 60000).toISOString())
+  })
+
+  it('点一刻 / 点三刻 / 点整', () => {
+    expect(parseQuickAdd('10点一刻 站会', NOW).dueAt).toBe(localISO(2026, 11, 4, 10, 15))
+    expect(parseQuickAdd('晚上八点三刻 收作业', NOW).dueAt).toBe(localISO(2026, 11, 3, 20, 45))
+    const r = parseQuickAdd('9点整 打卡', NOW)
+    expect(r.dueAt).toBe(localISO(2026, 11, 4, 9, 0))
+    expect(r.title).toBe('打卡')
+  })
+})

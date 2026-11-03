@@ -21,6 +21,15 @@ export default function SettingsModal(): JSX.Element {
     void window.noticeme.dataInfo().then(i => setDataDir(i.dir))
   }, [])
 
+  // Esc 关闭设置
+  useEffect(() => {
+    const h = (e: globalThis.KeyboardEvent): void => {
+      if (e.key === 'Escape') useStore.getState().setSettingsOpen(false)
+    }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [])
+
   const patch = (p: Partial<Settings>): void => {
     void updateSettings(p)
   }

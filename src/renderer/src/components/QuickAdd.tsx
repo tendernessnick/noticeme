@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, CalendarClock, Flag, Hash, AtSign, Keyboard } from 'lucide-react'
+import { Plus, CalendarClock, Flag, Hash, AtSign, Keyboard, Check } from 'lucide-react'
 import { parseQuickAdd, type ParsedQuickAdd } from '../../../shared/parse'
 import { newTask, uid, PROJECT_PALETTE } from '../../../shared/defaults'
 import { formatDueLabel } from '../../../shared/datetime'
@@ -37,8 +37,9 @@ const SYNTAX_GROUPS: Array<{ label: string; items: Array<[string, string]> }> = 
   {
     label: '相对偏移',
     items: [
-      ['30分钟后', '当前时间 +30 分钟'],
-      ['2小时后 / 半小时后', '当前时间 +2 小时 / +30 分钟'],
+      ['30分钟后 / 10分钟内 / 5分钟之后', '当前时间 ±N 分钟'],
+      ['2小时后 / 半小时后 / 2个小时内', '当前时间 ±N 小时'],
+      ['两个钟头后 / 一刻钟后 / 三刻钟内', '钟头=小时 · 每刻=15 分钟'],
       ['3天后 / 三天之内', '3 天后 09:00']
     ]
   },
@@ -46,6 +47,7 @@ const SYNTAX_GROUPS: Array<{ label: string; items: Array<[string, string]> }> = 
     label: '时刻',
     items: [
       ['9点 / 九点半 / 9点30 / 14:30', '对应时刻'],
+      ['10点一刻 / 八点三刻 / 9点整', '10:15 / 20:45 / 9:00'],
       ['早8点 / 晚10点', '8:00 / 22:00'],
       ['今晚10点', '→ 22:00（晚间语境）'],
       ['明天下午 / 晚上 / 上午', '时段默认 14:00 / 20:00 / 9:00']
@@ -71,7 +73,16 @@ export default function QuickAdd(): JSX.Element {
   const [text, setText] = useState('')
   const [hint, setHint] = useState<ParsedQuickAdd | null>(null)
   const [syntaxOpen, setSyntaxOpen] = useState(false)
+  /** 添加成功后的即时反馈（2 秒渐隐） */
+  const [flash, setFlash] = useState<string | null>(null)
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    return () => {
+      if (flashTimer.current) clearTimeout(flashTimer.current)
+    }
+  }, [])
 
   useEffect(() => {
     if (quickAddToken > 0) inputRef.current?.focus()
@@ -108,6 +119,13 @@ export default function QuickAdd(): JSX.Element {
     // PRD 决策：有截止时间即默认准时提醒
     if (parsed.dueAt) task.reminders = [{ id: uid(), offsetMin: null }]
     await upsertTask(task)
+    setFlash(
+      `已添加「${parsed.title.slice(0, 18)}${parsed.title.length > 18 ? '…' : ''}」${
+        parsed.dueAt ? ` · ${formatDueLabel(parsed.dueAt)}` : ''
+      }`
+    )
+    if (flashTimer.current) clearTimeout(flashTimer.current)
+    flashTimer.current = setTimeout(() => setFlash(null), 2200)
     setText('')
     setHint(null)
     inputRef.current?.focus()
@@ -175,8 +193,15 @@ export default function QuickAdd(): JSX.Element {
             ))}
           </div>
           <p className="mt-2 px-0.5 text-[11px] text-zinc-400">
-            组合任意词条即可，例如：「9号早上9点 交房租 p1 #工作 @电脑」「月底 盘点 紧急」。只给日期未给时刻时默认 09:00；有截止时间的任务默认准时提醒。
+            组合任意词条即可，例如：「9号早上9点 交房租 p1 #工作 @电脑」「月底 盘点 紧急」「一刻钟后 回电」。只给日期未给时刻时默认 09:00；有截止时间的任务默认准时提醒。
           </p>
+        </div>
+      )}
+
+      {flash && (
+        <div className="mt-1.5 flex items-center gap-1.5 px-1 text-[11px] text-emerald-600 animate-fadeIn dark:text-emerald-400">
+          <Check size={12} />
+          {flash}
         </div>
       )}
 

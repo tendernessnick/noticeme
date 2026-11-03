@@ -102,18 +102,32 @@ export function parseQuickAdd(input: string, now: Date = new Date()): ParsedQuic
   })
 
   // 2) 相对时间
-  //    N分钟后（必须带「后」）
-  text = text.replace(/(\d{1,4})\s*分钟后/g, (_m, g1: string) => {
-    relativeMinutes = Number(g1)
+  const setRelMin = (n: number): void => {
+    if (relativeMinutes === null) relativeMinutes = n
+  }
+  //    N分钟后 / N分钟之后 / N分钟内
+  text = text.replace(/(\d{1,4})\s*分钟\s*(?:之|过)?\s*(后|内)/g, (_m, g1: string) => {
+    setRelMin(Number(g1))
     return ' '
   })
-  //    N小时后 / 半小时后 / 三小时之后
-  const hoursLater = text.match(/(半|(\d{1,2}|[一二两三四五六七八九十]+))\s*小时\s*(?:之|过)?后/)
+  //    N小时后 / 半小时后 / N个小时之内 / N个钟头后
+  const hoursLater = text.match(
+    /(半|(?:\d{1,2}|[一二两三四五六七八九十]+))\s*个?\s*(?:小时|钟头)\s*(?:之|过)?\s*(?:后|内)/
+  )
   if (hoursLater) {
-    const n = hoursLater[1] === '半' ? 0.5 : cnNum(hoursLater[2])
+    const n = hoursLater[1] === '半' ? 0.5 : cnNum(hoursLater[1])
     if (!Number.isNaN(n) && n > 0 && n <= 72) {
-      relativeMinutes = Math.round(n * 60)
+      setRelMin(Math.round(n * 60))
       text = text.replace(hoursLater[0], ' ')
+    }
+  }
+  //    一刻钟 / 三刻钟 / 两刻钟内（每刻 = 15 分钟）
+  const quarter = text.match(new RegExp(`(${CN_NUM})?\\s*刻钟\\s*(?:之|过)?\\s*(?:后|内)`))
+  if (quarter) {
+    const n = quarter[1] ? cnNum(quarter[1]) : 1
+    if (!Number.isNaN(n) && n >= 1 && n <= 8) {
+      setRelMin(n * 15)
+      text = text.replace(quarter[0], ' ')
     }
   }
 
@@ -313,7 +327,7 @@ export function parseQuickAdd(input: string, now: Date = new Date()): ParsedQuic
   }
   if (!timeInfo) {
     const oclock = text.match(
-      new RegExp(`(凌晨|清晨|早上|早晨|上午|中午|下午|傍晚|晚上|夜里|早|晚)?\\s*(${CN_NUM})\\s*[点时](?:半|(${CN_NUM})\\s*分?)?`)
+      new RegExp(`(凌晨|清晨|早上|早晨|上午|中午|下午|傍晚|晚上|夜里|早|晚)?\\s*(${CN_NUM})\\s*[点时](?:半|一刻|三刻|(${CN_NUM})\\s*分?|整)?`)
     )
     if (oclock) {
       const mer = oclock[1]
@@ -321,7 +335,14 @@ export function parseQuickAdd(input: string, now: Date = new Date()): ParsedQuic
       const mRaw = oclock[3] ? cnNum(oclock[3]) : 0
       if (!Number.isNaN(hRaw) && hRaw <= 24 && mRaw <= 59) {
         if (eveningContext && !mer && hRaw < 12) hRaw += 12 // 今晚9点 → 21:00
-        timeInfo = { h: applyMeridiem(hRaw, mer), min: oclock[0].includes('半') ? 30 : mRaw }
+        // 分钟部分：半=30，一刻=15，三刻=45，N分=N，整=0
+        let min = 0
+        const seg = oclock[0]
+        if (seg.includes('半')) min = 30
+        else if (seg.includes('一刻')) min = 15
+        else if (seg.includes('三刻')) min = 45
+        else if (oclock[3] !== undefined) min = mRaw
+        timeInfo = { h: applyMeridiem(hRaw, mer), min }
         text = text.replace(oclock[0], ' ')
       }
     }
