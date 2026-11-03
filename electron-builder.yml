@@ -1,0 +1,29 @@
+appId: com.dsh.noticeme
+productName: NoticeMe
+# 使用 npm 安装时已下载的本地 Electron，避免打包期再次联网下载
+electronDist: node_modules/electron/dist
+directories:
+  output: dist
+files:
+  - out/**
+  - package.json
+  - resources/icon.png
+  - resources/icon.ico
+  - resources/chime.wav
+win:
+  icon: resources/icon.ico
+  # 无证书签名环境跳过 PE 资源编辑（需要符号链接特权）；应用运行时图标由 resources/icon.png 提供
+  signAndEditExecutable: false
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: NoticeMe
+  artifactName: NoticeMe-Setup-${version}.${ext}
+portable:
+  artifactName: NoticeMe-Portable-${version}.${ext}
