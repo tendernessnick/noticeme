@@ -21,7 +21,7 @@
     "gen:assets": "node scripts/gen-icon.mjs && node scripts/gen-chime.mjs",
     "smoke": "npm run build && node scripts/smoke.mjs",
     "dist": "electron-vite build && electron-builder --win --publish never",
-    "release": "npm run typecheck && npm run test && electron-vite build && electron-builder --win && gh release create v%npm_package_version% \"dist/NoticeMe-Setup-%npm_package_version%.exe\" \"dist/NoticeMe-Portable-%npm_package_version%.exe\" --title \"NoticeMe v%npm_package_version%\" --generate-notes"
+    "release": "npm run typecheck && npm run test && npm run dist && gh release create v%npm_package_version% \"dist/NoticeMe-Setup-%npm_package_version%.exe\" \"dist/NoticeMe-Portable-%npm_package_version%.exe\" --title \"NoticeMe v%npm_package_version%\" --generate-notes"
   },
   "dependencies": {
     "lucide-react": "^0.462.0",
