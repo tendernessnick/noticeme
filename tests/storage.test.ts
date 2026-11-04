@@ -13,13 +13,55 @@ beforeEach(() => {
 })
 
 describe('Store', () => {
-  it('首次初始化 → 默认数据（收集箱 + 欢迎任务 + 默认设置）', () => {
+  it('首次初始化 → 默认数据（收集箱 + 欢迎任务 + 欢迎日记 + 默认设置）', () => {
     const store = new Store(dir)
     const db = store.get()
     expect(db.projects.some(p => p.id === 'inbox')).toBe(true)
     expect(db.tasks).toHaveLength(1)
+    expect(db.entries).toHaveLength(1)
+    expect(db.entries[0].date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     expect(db.settings.notifyMode).toBe('card')
     expect(db.settings.snoozePresets).toContain(10)
+  })
+
+  it('旧版本数据（无 entries 字段）迁移为空数组；含日记数据完整读回', () => {
+    // 0.1.x 旧格式：没有 entries 字段
+    writeFileSync(
+      join(dir, 'data.json'),
+      JSON.stringify({
+        version: 1,
+        tasks: [{ id: 't1', title: '旧任务' }],
+        projects: [{ id: 'inbox', name: '收集箱', color: '#6366f1', createdAt: '2026-01-01T00:00:00.000Z' }],
+        settings: { notifyMode: 'card' }
+      }),
+      'utf-8'
+    )
+    const store = new Store(dir)
+    expect(store.get().entries).toHaveLength(0)
+    expect(store.get().tasks.some(t => t.title === '旧任务')).toBe(true)
+
+    // 新格式：日记往返
+    const dir2 = mkdtempSync(join(tmpdir(), 'noticeme-store-'))
+    const store2 = new Store(dir2)
+    const entry = {
+      id: 'j1',
+      title: '规划',
+      content: '下周完成模糊匹配优化',
+      mood: '🙂',
+      tags: ['规划'],
+      pinned: true,
+      date: '2026-11-04',
+      createdAt: '2026-11-04T00:00:00.000Z',
+      updatedAt: '2026-11-04T00:00:00.000Z'
+    }
+    store2.mutate(db => db.entries.push(entry))
+    const store3 = new Store(dir2)
+    const entries = store3.get().entries
+    const roundtripped = entries.find(e => e.id === 'j1')
+    expect(entries.length).toBeGreaterThanOrEqual(1)
+    expect(roundtripped?.pinned).toBe(true)
+    expect(roundtripped?.mood).toBe('🙂')
+    expect(roundtripped?.date).toBe('2026-11-04')
   })
 
   it('旧版本设置（独立双开关）自动迁移为 notifyMode', () => {

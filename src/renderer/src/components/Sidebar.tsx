@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Layers,
   CheckCircle2,
+  BookOpen,
   Settings as SettingsIcon,
   Plus,
   ListTodo,
@@ -22,7 +23,8 @@ const NAV: Array<{ kind: View['kind']; label: string; icon: typeof Sun }> = [
   { kind: 'today', label: '今天', icon: Sun },
   { kind: 'upcoming', label: '即将到来', icon: CalendarDays },
   { kind: 'all', label: '全部', icon: Layers },
-  { kind: 'done', label: '已完成', icon: CheckCircle2 }
+  { kind: 'done', label: '已完成', icon: CheckCircle2 },
+  { kind: 'journal', label: '日记', icon: BookOpen }
 ]
 
 export default function Sidebar(): JSX.Element {
@@ -96,7 +98,8 @@ export default function Sidebar(): JSX.Element {
     today: active.filter(t => t.dueAt && new Date(t.dueAt).getTime() < start + 86400000).length,
     upcoming: active.filter(t => t.dueAt && new Date(t.dueAt).getTime() >= start + 86400000).length,
     all: active.length,
-    done: db.tasks.filter(t => t.done).length
+    done: db.tasks.filter(t => t.done).length,
+    journal: db.entries.length
   }
   const projectCount = (pid: string): number =>
     active.filter(t => (t.projectId ?? 'inbox') === pid).length

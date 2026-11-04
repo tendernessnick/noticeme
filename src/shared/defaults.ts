@@ -1,5 +1,5 @@
 // 默认数据与工厂函数（纯函数，供主进程 / 渲染端 / 测试共用，禁止 Node 专属依赖）
-import type { Database, Project, Settings, Task } from './types'
+import type { Database, JournalEntry, Project, Settings, Task } from './types'
 import { INBOX_PROJECT_ID } from './types'
 import { addDays, startOfDay } from './datetime'
 
@@ -54,6 +54,30 @@ export function newTask(partial: Partial<Task> = {}): Task {
   }
 }
 
+/** 本地日期字符串 YYYY-MM-DD */
+export function localToday(now: Date = new Date()): string {
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+export function newJournalEntry(partial: Partial<JournalEntry> = {}): JournalEntry {
+  const now = new Date().toISOString()
+  return {
+    id: uid(),
+    title: '',
+    content: '',
+    mood: '',
+    tags: [],
+    pinned: false,
+    date: localToday(),
+    createdAt: now,
+    updatedAt: now,
+    ...partial
+  }
+}
+
 export function createDefaultDb(): Database {
   const inbox: Project = {
     id: INBOX_PROJECT_ID,
@@ -66,6 +90,13 @@ export function createDefaultDb(): Database {
     d.setHours(9, 0, 0, 0)
     return d.toISOString()
   })()
+  const welcomeEntry = newJournalEntry({
+    title: '欢迎使用日记板块 ✨',
+    content: '这里可以随便记——\n\n· 今天的想法和心情\n· 灵感与碎片信息\n· 接下来的规划\n\n右上角可标记心情与置顶，左侧按月份归档。',
+    mood: '😊',
+    tags: ['指南'],
+    date: localToday()
+  })
   const welcome = newTask({
     title: '欢迎使用 NoticeMe ✨',
     notes: '在顶部输入框试试自然语言快速添加：\n「明天 9 点 写周报 p1 #工作 @电脑」\n\n· 到点会弹出置顶提醒卡片\n· 可在设置中开启开机自启与全局快捷键',
@@ -80,6 +111,7 @@ export function createDefaultDb(): Database {
     tasks: [welcome],
     projects: [inbox],
     snoozes: [],
+    entries: [welcomeEntry],
     settings: defaultSettings(),
     firedKeys: [],
     updatedAt: new Date().toISOString()
@@ -103,11 +135,16 @@ export function sanitizeDb(raw: unknown): Database | null {
     if (legacy.notifyAlert === false && legacy.notifyToast === true) settings.notifyMode = 'toast'
     else settings.notifyMode = 'card'
   }
+  const rawEntries = (r as { entries?: unknown }).entries
   return {
     version: DATA_VERSION,
     tasks: r.tasks.filter(t => t && typeof t.id === 'string' && typeof t.title === 'string'),
     projects: r.projects.filter(p => p && typeof p.id === 'string' && typeof p.name === 'string'),
     snoozes: Array.isArray(r.snoozes) ? r.snoozes : [],
+    // 0.1.x 旧数据没有 entries 字段 → 迁移为空数组
+    entries: Array.isArray(rawEntries)
+      ? (rawEntries as JournalEntry[]).filter(e => e && typeof e.id === 'string' && typeof e.content === 'string')
+      : [],
     settings,
     firedKeys: Array.isArray(r.firedKeys) ? r.firedKeys : [],
     updatedAt: new Date().toISOString()

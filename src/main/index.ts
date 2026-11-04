@@ -13,7 +13,7 @@ import { createTray, rebuild } from './tray'
 import { applyShortcuts } from './shortcuts'
 import { defaultSettings, newTask } from '../shared/defaults'
 import { nextOccurrence } from '../shared/recurrence'
-import type { AlertEntry, Project, Settings, Task, UiEvent } from '../shared/types'
+import type { AlertEntry, JournalEntry, Project, Settings, Task, UiEvent } from '../shared/types'
 import type { TrayDeps } from './tray-deps'
 import type { FireItem } from '../shared/scheduler-core'
 
@@ -328,6 +328,23 @@ function registerIpc(): void {
     scheduler.wake()
     broadcastDb()
     return true
+  })
+
+  ipcMain.handle('journal:upsert', (_e, entry: JournalEntry) => {
+    const nowIso = new Date().toISOString()
+    store.mutate(db => {
+      const idx = db.entries.findIndex(x => x.id === entry.id)
+      if (idx >= 0) db.entries[idx] = { ...entry, updatedAt: nowIso }
+      else db.entries.push({ ...entry, createdAt: entry.createdAt || nowIso, updatedAt: nowIso })
+    })
+    broadcastDb()
+  })
+
+  ipcMain.handle('journal:delete', (_e, id: string) => {
+    store.mutate(db => {
+      db.entries = db.entries.filter(x => x.id !== id)
+    })
+    broadcastDb()
   })
 
   ipcMain.handle('data:info', () => ({ dir: app.getPath('userData') }))

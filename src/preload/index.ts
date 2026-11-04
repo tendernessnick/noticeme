@@ -1,6 +1,6 @@
 // 预加载脚本：contextBridge 暴露类型安全 API
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Database, Project, Settings, Task } from '../shared/types'
+import type { Database, JournalEntry, Project, Settings, Task } from '../shared/types'
 
 export interface AlertActionPayload {
   type: 'complete' | 'snooze' | 'open' | 'dismiss'
@@ -14,6 +14,8 @@ const api = {
   deleteTask: (id: string): Promise<void> => ipcRenderer.invoke('task:delete', id),
   setTaskDone: (id: string, done: boolean): Promise<void> =>
     ipcRenderer.invoke('task:setDone', { id, done }),
+  upsertJournal: (entry: JournalEntry): Promise<void> => ipcRenderer.invoke('journal:upsert', entry),
+  deleteJournal: (id: string): Promise<void> => ipcRenderer.invoke('journal:delete', id),
   addProject: (name: string, color: string): Promise<string> =>
     ipcRenderer.invoke('project:add', { name, color }),
   updateProject: (p: Project): Promise<void> => ipcRenderer.invoke('project:update', p),

@@ -1,5 +1,5 @@
 // 渲染端 window.noticeme 类型声明
-import type { Database, Project, Settings, Task, UiEvent, AlertEntry } from '../shared/types'
+import type { Database, JournalEntry, Project, Settings, Task, UiEvent, AlertEntry } from '../shared/types'
 
 export interface AlertActionPayload {
   type: 'complete' | 'snooze' | 'open' | 'dismiss'
@@ -12,6 +12,8 @@ export interface NoticeMeApi {
   upsertTask(task: Task): Promise<void>
   deleteTask(id: string): Promise<void>
   setTaskDone(id: string, done: boolean): Promise<void>
+  upsertJournal(entry: JournalEntry): Promise<void>
+  deleteJournal(id: string): Promise<void>
   addProject(name: string, color: string): Promise<string>
   updateProject(p: Project): Promise<void>
   deleteProject(id: string): Promise<void>

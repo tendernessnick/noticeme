@@ -6,7 +6,8 @@ const TITLES: Record<string, { title: string; sub?: string }> = {
   today: { title: '今天' },
   upcoming: { title: '即将到来' },
   all: { title: '全部任务' },
-  done: { title: '已完成' }
+  done: { title: '已完成' },
+  journal: { title: '日记' }
 }
 
 export default function TopBar(): JSX.Element {
@@ -24,6 +25,7 @@ export default function TopBar(): JSX.Element {
     title = db.projects.find(p => p.id === (view.projectId ?? 'inbox'))?.name ?? '清单'
   }
   const activeCount = db.tasks.filter(t => !t.done).length
+  const isJournal = view.kind === 'journal'
 
   // 今日完成度（截止在今天及今天之前的任务）
   const start = START_OF_TODAY()
@@ -38,9 +40,10 @@ export default function TopBar(): JSX.Element {
         <h1 className="truncate text-xl font-bold leading-tight">{title}</h1>
         <div className="mt-0.5 flex items-center gap-2">
           <p className="text-xs text-zinc-400">
-            {dateLabel} · {activeCount} 项待办
+            {dateLabel}
+            {isJournal ? ` · ${db.entries.length} 篇` : ` · ${activeCount} 项待办`}
           </p>
-          {todays.length > 0 && (
+          {!isJournal && todays.length > 0 && (
             <span className="flex items-center gap-1.5" title={`今日完成 ${doneToday}/${todays.length}`}>
               <span className="h-1.5 w-16 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
                 <span
@@ -55,15 +58,17 @@ export default function TopBar(): JSX.Element {
           )}
         </div>
       </div>
-      <div className="relative ml-auto w-60 shrink-0">
-        <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="搜索任务…"
-          className="input !py-1.5 pl-8"
-        />
-      </div>
+      {!isJournal && (
+        <div className="relative ml-auto w-60 shrink-0">
+          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="搜索任务…"
+            className="input !py-1.5 pl-8"
+          />
+        </div>
+      )}
     </div>
   )
 }

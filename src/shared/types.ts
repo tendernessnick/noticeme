@@ -47,6 +47,24 @@ export interface Snooze {
   fireAt: string
 }
 
+/** 日记/随笔：自由记录想法、日常与规划 */
+export interface JournalEntry {
+  id: string
+  /** 标题（可留空） */
+  title: string
+  /** 正文（多行纯文本） */
+  content: string
+  /** 心情 emoji（空 = 未标记） */
+  mood: string
+  tags: string[]
+  /** 置顶（规划/重要记录常驻顶部） */
+  pinned: boolean
+  /** 日记归属日期 YYYY-MM-DD */
+  date: string
+  createdAt: string
+  updatedAt: string
+}
+
 export type ThemeMode = 'system' | 'light' | 'dark'
 
 /** 提醒方式：card=置顶弹窗卡片（默认） toast=Windows 系统通知 both=两者同时 */
@@ -76,6 +94,8 @@ export interface Database {
   tasks: Task[]
   projects: Project[]
   snoozes: Snooze[]
+  /** 日记/随笔 */
+  entries: JournalEntry[]
   settings: Settings
   /** 已触发提醒防重键：taskId:reminderId:dueAtISO */
   firedKeys: string[]

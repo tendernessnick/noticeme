@@ -1,9 +1,9 @@
 // 渲染端全局状态（zustand）：主进程 DB 为唯一数据源，本地只保存视图状态
 import { create } from 'zustand'
-import type { Database, Project, Settings, Task, UiEvent } from '../../shared/types'
+import type { Database, JournalEntry, Project, Settings, Task, UiEvent } from '../../shared/types'
 import { applyTheme } from './utils/theme'
 
-export type ViewKind = 'today' | 'upcoming' | 'all' | 'done' | 'project'
+export type ViewKind = 'today' | 'upcoming' | 'all' | 'done' | 'journal' | 'project'
 
 export interface View {
   kind: ViewKind
@@ -28,6 +28,8 @@ interface AppState {
   upsertTask(t: Task): Promise<void>
   deleteTask(id: string): Promise<void>
   setDone(id: string, done: boolean): Promise<void>
+  upsertJournal(e: JournalEntry): Promise<void>
+  deleteJournal(id: string): Promise<void>
   addProject(name: string, color: string): Promise<string>
   updateProject(p: Project): Promise<void>
   deleteProject(id: string): Promise<void>
@@ -73,6 +75,12 @@ export const useStore = create<AppState>((set, get) => ({
   },
   setDone: async (id, done) => {
     await window.noticeme.setTaskDone(id, done)
+  },
+  upsertJournal: async e => {
+    await window.noticeme.upsertJournal(e)
+  },
+  deleteJournal: async id => {
+    await window.noticeme.deleteJournal(id)
   },
   addProject: async (name, color) => window.noticeme.addProject(name, color),
   updateProject: async p => {
