@@ -7,6 +7,7 @@ import type { JournalEntry } from '../../../shared/types'
 import type { TaskDraft } from '../../../shared/ai-schema'
 import { newJournalEntry, newTask, uid } from '../../../shared/defaults'
 import { formatDueLabel } from '../../../shared/datetime'
+import { useAiProgress } from '../utils/aiProgress'
 import { useStore } from '../store'
 
 const MOODS = ['😊', '🙂', '😐', '😞', '😠'] as const
@@ -58,13 +59,15 @@ export default function JournalView(): JSX.Element {
     saved: boolean
   }>({ open: false, phase: 'running', text: '', ms: 0, error: '', saved: false })
   const [todoSuggest, setTodoSuggest] = useState<{
-    phase: 'running' | 'ready' | 'error'
+    phase: 'idle' | 'running' | 'ready' | 'error'
     drafts: TaskDraft[]
     added: number[]
     error: string
-  }>({ phase: 'running', drafts: [], added: [], error: '' })
+  }>({ phase: 'idle', drafts: [], added: [], error: '' })
 
   const aiReady = !!aiStatus && aiStatus.enabled && aiStatus.modelAvailable
+  const reviewProgress = useAiProgress(review.open && review.phase === 'running')
+  const todoProgress = useAiProgress(todoSuggest.phase === 'running')
 
   const openReview = (): void => {
     setReview({ open: true, phase: 'running', text: '', ms: 0, error: '', saved: false })
@@ -359,7 +362,7 @@ export default function JournalView(): JSX.Element {
                 title={!aiReady ? '需在设置中启用本地 AI 并下载模型' : '从这篇日记提取待办（本地 AI）'}
               >
                 {todoSuggest.phase === 'running' ? <Loader2 size={13} className="animate-spin" /> : <ListTodo size={13} />}
-                提取待办
+                {todoSuggest.phase === 'running' ? `生成中 ${todoProgress.elapsed}s` : '提取待办'}
               </button>
               <button
                 onClick={() => save({ pinned: !draft.pinned })}
@@ -440,7 +443,7 @@ export default function JournalView(): JSX.Element {
                   <ListTodo size={12} />
                   {todoSuggest.drafts.length > 0 ? `提取到 ${todoSuggest.drafts.length} 条待办` : '这篇日记里没有明确的待办'}
                 </span>
-                <button onClick={() => setTodoSuggest({ phase: 'running', drafts: [], added: [], error: '' })} className="text-zinc-400 hover:text-accent">
+                <button onClick={() => setTodoSuggest({ phase: 'idle', drafts: [], added: [], error: '' })} className="text-zinc-400 hover:text-accent">
                   <X size={12} />
                 </button>
               </div>
@@ -523,7 +526,13 @@ export default function JournalView(): JSX.Element {
             {review.phase === 'running' && (
               <div className="flex flex-col items-center gap-3 py-12 text-center">
                 <Loader2 size={22} className="animate-spin text-accent" />
-                <p className="text-[13px] text-zinc-400">本地 AI 正在阅读你这一周的日记与任务…</p>
+                <p className="text-[13px] text-zinc-400">
+                  本地 AI 正在阅读你这一周的日记与任务…
+                  <br />
+                  <span className="text-[11px] text-zinc-400/80">
+                    已 {reviewProgress.elapsed}s{reviewProgress.chars > 0 ? ` · 已生成 ${reviewProgress.chars} 字` : ''}（1.5B CPU 推理约需 10~30 秒，请稍候）
+                  </span>
+                </p>
               </div>
             )}
             {review.phase === 'error' && (

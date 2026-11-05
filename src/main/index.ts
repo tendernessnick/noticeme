@@ -515,6 +515,11 @@ app.whenReady().then(() => {
       for (const w of BrowserWindow.getAllWindows()) {
         if (!w.isDestroyed()) w.webContents.send('ai:state', status)
       }
+    },
+    notifyProgress: (_id, chars) => {
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.isDestroyed()) w.webContents.send('ai:infer-progress', { chars })
+      }
     }
   })
 
@@ -532,11 +537,17 @@ app.whenReady().then(() => {
 
   if (IS_SMOKE) void runSmoke()
 
-  // AI 探针（scripts/ai-smoke.mjs）：验证原生运行时/模型加载后打印并退出
+  // AI 探针（scripts/ai-smoke.mjs）：验证原生运行时/模型加载/真实推理后打印并退出
   const probeModel = process.env.NOTICE_ME_AI_MODEL || ''
+  const inferSample = process.env.NOTICE_ME_AI_INFER || ''
   if (IS_AI_PROBE) {
     void ai
       .probe(probeModel || undefined)
+      .then(async r => {
+        if (!inferSample || !probeModel) return { ...r, inferMs: null, raw: null }
+        const { raw, ms } = await ai.debugInfer('journalTodos', inferSample)
+        return { ...r, inferMs: ms, raw }
+      })
       .then(r => {
         console.log('[ai-probe]', JSON.stringify(r))
         app.exit(0)

@@ -25,6 +25,14 @@ export interface ProbeResult {
   ctxMs: number | null
 }
 
+/** worker → 主进程：推理进度事件（与响应共用请求 id） */
+export interface WorkerProgress {
+  type: 'progress'
+  id: number
+  /** 本 chunk 的字符数（累计由主进程负责） */
+  chars: number
+}
+
 /** worker → 主进程 */
 export type WorkerResponse =
   | { id: number; ok: true; type: 'probe'; result: ProbeResult }

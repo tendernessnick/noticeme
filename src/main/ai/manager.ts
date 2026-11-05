@@ -31,6 +31,8 @@ export interface AiManagerDeps {
   getSettings: () => Settings
   /** 状态变化推送到渲染端 */
   notify: (status: AiStatus) => void
+  /** 推理生成进度（字符增量）推送到渲染端 */
+  notifyProgress?: (id: number, chars: number) => void
 }
 
 export class AiManager {
@@ -136,6 +138,12 @@ export class AiManager {
     })
     child.on('message', raw => {
       const msg = raw as WorkerResponse
+      // 进度事件不是响应：转发给渲染端后返回
+      if ((raw as { type?: string }).type === 'progress') {
+        const prog = raw as { id: number; chars: number }
+        this.deps.notifyProgress?.(prog.id, prog.chars)
+        return
+      }
       const p = this.pending.get(msg.id)
       if (!p) return
       clearTimeout(p.timer)
@@ -227,7 +235,7 @@ export class AiManager {
       this.push()
       try {
         const res = await this.request(
-          { type: 'infer', kind: 'drafts', system, user, maxTokens: 500 },
+          { type: 'infer', kind: 'drafts', system, user, maxTokens: 600 },
           INFER_TIMEOUT_MS
         )
         if (!res.ok) throw new Error(res.error)
@@ -235,6 +243,8 @@ export class AiManager {
         return { raw: res.result, ms: res.ms }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
+        // 推理超时说明 worker 大概率已挂起：杀掉它，下一次调用自动重启，不再连环陪葬
+        if (msg.includes('超时')) this.kill()
         this.setLastError(msg)
         throw e
       } finally {
@@ -271,6 +281,7 @@ export class AiManager {
         return { text: res.result.trim(), ms: res.ms }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
+        if (msg.includes('超时')) this.kill()
         this.setLastError(msg)
         throw e
       } finally {
@@ -337,5 +348,14 @@ export class AiManager {
       loadMs = loadRes.type === 'load' ? loadRes.ms : null
     }
     return { ...result, forkMs: Date.now() - t0, loadMs }
+  }
+
+  /** 诊断用：绕过设置开关直接推理一次（probe 已加载模型的前提下） */
+  async debugInfer(kind: AiTaskKind, text: string): Promise<{ raw: string; ms: number }> {
+    const { system, user } = buildExtractionPrompt(kind, text)
+    const res = await this.request({ type: 'infer', kind: 'drafts', system, user, maxTokens: 500 }, INFER_TIMEOUT_MS)
+    if (!res.ok) throw new Error(res.error)
+    if (res.type !== 'infer') throw new Error('意外的 worker 响应')
+    return { raw: res.result, ms: res.ms }
   }
 }

@@ -41,6 +41,7 @@ export interface NoticeMeApi {
   onUi(cb: (p: UiEvent) => void): () => void
   onAlertQueue(cb: (p: { items: AlertEntry[]; presets: number[] }) => void): () => void
   onAiState(cb: (s: AiStatus) => void): () => void
+  onAiProgress(cb: (p: { chars: number }) => void): () => void
 }
 
 declare global {

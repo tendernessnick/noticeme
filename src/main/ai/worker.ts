@@ -3,12 +3,12 @@
 // （rollup 输出经 renderDynamicImport 保留 import() 形态，见 electron.vite.config.ts）
 import type { Llama, LlamaContext, LlamaJsonSchemaGrammar, LlamaModel } from 'node-llama-cpp'
 import { TASK_DRAFTS_SCHEMA } from '../../shared/ai-schema'
-import type { WorkerRequest, WorkerResponse, ProbeResult } from './types'
+import type { WorkerRequest, WorkerResponse, WorkerProgress, ProbeResult } from './types'
 
 // utilityProcess 子进程通信端口（Electron 注入到 process 上，此处本地最小类型声明）
 interface ParentPort {
   on(ev: 'message', cb: (e: { data: unknown }) => void): void
-  postMessage(v: WorkerResponse): void
+  postMessage(v: WorkerResponse | WorkerProgress): void
 }
 const port = (process as unknown as { parentPort: ParentPort }).parentPort
 
@@ -93,7 +93,11 @@ async function handle(req: WorkerRequest): Promise<void> {
             maxTokens: req.maxTokens,
             temperature: 0.15,
             signal: ctrl.signal,
-            stopOnAbortSignal: true
+            stopOnAbortSignal: true,
+            // 生成进度：转发字符增量给主进程，渲染端展示「已生成 N 字」避免像卡死
+            onTextChunk: chunk => {
+              port.postMessage({ type: 'progress', id: req.id, chars: chunk.length })
+            }
           })
           reply({ id: req.id, ok: true, type: 'infer', result: text, ms: Date.now() - t0 })
         } finally {

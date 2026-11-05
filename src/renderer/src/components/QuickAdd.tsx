@@ -5,6 +5,7 @@ import { mergeQuickAdd, type TaskDraft } from '../../../shared/ai-schema'
 import { newTask, uid, PROJECT_PALETTE } from '../../../shared/defaults'
 import { formatDueLabel } from '../../../shared/datetime'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '../utils/ui'
+import { useAiProgress } from '../utils/aiProgress'
 import { useStore } from '../store'
 
 /** 快速添加完整语法速查（与 src/shared/parse.ts 保持同步） */
@@ -125,6 +126,8 @@ export default function QuickAdd(): JSX.Element {
     aiStatus.enabled &&
     aiStatus.quickAddFallback &&
     aiStatus.modelAvailable
+  const aiRunProgress = useAiProgress(ai.running)
+  const pasteProgress = useAiProgress(paste?.state === 'loading')
 
   // AI 兜底：正则没解析出截止时间时异步补解析（700ms 防抖）
   useEffect(() => {
@@ -339,7 +342,8 @@ export default function QuickAdd(): JSX.Element {
       {ai.running && (
         <div className="mt-1.5 flex items-center gap-1.5 px-1 text-[11px] text-zinc-400 animate-fadeIn">
           <Loader2 size={11} className="animate-spin text-accent" />
-          AI 解析中…
+          AI 解析中… {aiRunProgress.elapsed}s
+          {aiRunProgress.chars > 0 && ` · 已生成 ${aiRunProgress.chars} 字`}
         </div>
       )}
 
@@ -392,7 +396,8 @@ export default function QuickAdd(): JSX.Element {
           {paste.state === 'loading' && (
             <div className="flex items-center gap-2 px-1 py-3 text-[12px] text-zinc-400">
               <Loader2 size={13} className="animate-spin text-accent" />
-              本地 AI 正在拆解，通常需要几秒…
+              本地 AI 正在拆解… {pasteProgress.elapsed}s
+              {pasteProgress.chars > 0 && ` · 已生成 ${pasteProgress.chars} 字`}（CPU 推理约需 10~30 秒）
             </div>
           )}
           {paste.state === 'error' && (

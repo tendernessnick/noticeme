@@ -82,6 +82,11 @@ const api = {
     const l = (_e: unknown, s: AiStatus): void => cb(s)
     ipcRenderer.on('ai:state', l as never)
     return () => ipcRenderer.removeListener('ai:state', l as never)
+  },
+  onAiProgress: (cb: (p: { chars: number }) => void): (() => void) => {
+    const l = (_e: unknown, p: { chars: number }): void => cb(p)
+    ipcRenderer.on('ai:infer-progress', l as never)
+    return () => ipcRenderer.removeListener('ai:infer-progress', l as never)
   }
 }
 
