@@ -1,0 +1,43 @@
+# macOS 构建：产出 dmg（arm64 + x64，未签名）。
+# 必须在 macOS runner 上构建——node-llama-cpp 是安装期按平台下载的原生二进制，
+# 无法从 Windows 交叉打包。手动触发或推送 v* 标签时运行。
+name: mac-build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck & test
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Build dmg (arm64 + x64)
+        run: |
+          npx electron-vite build
+          npx electron-builder --mac --publish never
+        env:
+          # 无证书环境：阻止 electron-builder 自动查找钥匙串签名身份
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload dmg artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-dmg
+          path: dist/NoticeMe-mac-*.dmg
+          if-no-files-found: error
