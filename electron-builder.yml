@@ -9,7 +9,21 @@ files:
   - package.json
   - resources/icon.png
   - resources/icon.ico
+  - resources/icon-mac.png
   - resources/chime.wav
+  # 排除未使用的 GPU 变体二进制（CUDA/Vulkan/ARM，合计数百 MB；本应用固定 CPU 推理）
+  - "!node_modules/@node-llama-cpp/win-arm64/**"
+  - "!node_modules/@node-llama-cpp/win-x64-cuda/**"
+  - "!node_modules/@node-llama-cpp/win-x64-cuda-ext/**"
+  - "!node_modules/@node-llama-cpp/win-x64-vulkan/**"
+# node-llama-cpp 的原生 addon（Windows 为 .node+DLL，macOS 为 .node+dylib）不能从 asar 内加载，必须解包
+# 平台二进制由 npm 按当前系统安装，另一平台的 glob 不匹配即为空操作，一份配置两端通用
+# 模型 GGUF 不进安装包——首次使用时下载到 userData/models
+asarUnpack:
+  - "**/*.node"
+  - "node_modules/@node-llama-cpp/win-x64/**"
+  - "node_modules/@node-llama-cpp/darwin-arm64/**"
+  - "node_modules/@node-llama-cpp/darwin-x64/**"
 win:
   icon: resources/icon.ico
   # 无证书签名环境跳过 PE 资源编辑（需要符号链接特权）；应用运行时图标由 resources/icon.png 提供
@@ -27,3 +41,14 @@ nsis:
   artifactName: NoticeMe-Setup-${version}.${ext}
 portable:
   artifactName: NoticeMe-Portable-${version}.${ext}
+mac:
+  icon: resources/icon-mac.png
+  category: public.app-category.productivity
+  # 无 Apple 证书：跳过签名，产物未公证。用户首次打开需右键 -> 打开，
+  # 或执行 `xattr -cr /Applications/NoticeMe.app` 绕过 Gatekeeper。
+  # 若取得开发者账号，删除 identity: null 并配置 CSC_LINK 环境变量即可签名+公证。
+  identity: null
+  artifactName: NoticeMe-mac-${version}-${arch}.${ext}
+  target:
+    - target: dmg
+      arch: [arm64, x64]

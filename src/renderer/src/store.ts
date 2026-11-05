@@ -1,6 +1,7 @@
 // 渲染端全局状态（zustand）：主进程 DB 为唯一数据源，本地只保存视图状态
 import { create } from 'zustand'
 import type { Database, JournalEntry, Project, Settings, Task, UiEvent } from '../../shared/types'
+import type { AiStatus } from '../../shared/ai-schema'
 import { applyTheme } from './utils/theme'
 
 export type ViewKind = 'today' | 'upcoming' | 'all' | 'done' | 'journal' | 'project'
@@ -18,6 +19,8 @@ interface AppState {
   settingsOpen: boolean
   quickAddToken: number
   showDone: boolean
+  /** 本地 AI 运行时状态（主进程推送） */
+  aiStatus: AiStatus | null
   init(): Promise<void>
   setView(v: View): void
   setSearch(s: string): void
@@ -44,6 +47,7 @@ export const useStore = create<AppState>((set, get) => ({
   settingsOpen: false,
   quickAddToken: 0,
   showDone: false,
+  aiStatus: null,
 
   init: async () => {
     const db = await window.noticeme.getDb()
@@ -53,6 +57,8 @@ export const useStore = create<AppState>((set, get) => ({
       set({ db: ndb })
       applyTheme(ndb.settings.theme)
     })
+    window.noticeme.onAiState(s => set({ aiStatus: s }))
+    void window.noticeme.aiStatus().then(s => set({ aiStatus: s }))
     window.noticeme.onUi((p: UiEvent) => {
       if (p.type === 'quickadd') set(s => ({ quickAddToken: s.quickAddToken + 1 }))
       else if (p.type === 'open-task') set({ selectedTaskId: p.taskId })

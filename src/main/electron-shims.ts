@@ -9,7 +9,9 @@ export {
   Notification,
   nativeImage,
   globalShortcut,
-  screen
+  net,
+  screen,
+  utilityProcess
 } from 'electron'
 
 export function writeFileSyncSafe(file: string, data: Buffer): void {

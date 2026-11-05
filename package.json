@@ -1,7 +1,7 @@
 {
   "name": "noticeme",
-  "version": "0.2.0",
-  "description": "NoticeMe — 本地优先的 Windows 桌面待办与提醒应用",
+  "version": "0.3.0",
+  "description": "NoticeMe — 本地优先的 Windows / macOS 桌面待办与提醒应用",
   "main": "out/main/index.js",
   "author": "DSH",
   "license": "MIT",
@@ -20,11 +20,14 @@
     "test": "vitest run",
     "gen:assets": "node scripts/gen-icon.mjs && node scripts/gen-chime.mjs",
     "smoke": "npm run build && node scripts/smoke.mjs",
+    "ai:probe": "npm run build && node scripts/ai-smoke.mjs",
     "dist": "electron-vite build && electron-builder --win --publish never",
+    "dist:mac": "electron-vite build && electron-builder --mac --publish never",
     "release": "npm run typecheck && npm run test && npm run dist && gh release create v%npm_package_version% \"dist/NoticeMe-Setup-%npm_package_version%.exe\" \"dist/NoticeMe-Portable-%npm_package_version%.exe\" --title \"NoticeMe v%npm_package_version%\" --generate-notes"
   },
   "dependencies": {
     "lucide-react": "^0.462.0",
+    "node-llama-cpp": "^3.22.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^4.5.5"

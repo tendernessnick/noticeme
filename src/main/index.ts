@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process'
 import { Store } from './store'
 import { Scheduler } from './scheduler'
 import { AlertManager } from './alerts'
+import { AiManager } from './ai/manager'
 import { showToast } from './notify'
 import { createTray, rebuild } from './tray'
 import { applyShortcuts } from './shortcuts'
@@ -19,10 +20,15 @@ import type { FireItem } from '../shared/scheduler-core'
 
 const SMOKE_DIR = process.env.NOTICE_ME_SMOKE || ''
 const IS_SMOKE = !!SMOKE_DIR
+const IS_AI_PROBE = !!process.env.NOTICE_ME_AI_PROBE
 
 if (IS_SMOKE) {
   // 每次冒烟使用独立数据目录，避免多次运行的数据互相污染
   app.setPath('userData', join(tmpdir(), `noticeme-smoke-${Date.now()}`))
+}
+if (IS_AI_PROBE) {
+  // AI 探针同样独立数据目录：避免与常驻实例争单实例锁（锁文件在 userData 中）
+  app.setPath('userData', join(tmpdir(), `noticeme-ai-probe-${Date.now()}`))
 }
 
 app.setAppUserModelId('com.dsh.noticeme')
@@ -32,6 +38,7 @@ let win: BrowserWindow | null = null
 let store: Store
 let scheduler: Scheduler
 let alerts: AlertManager
+let ai: AiManager
 let quitting = false
 /** 提示音的本地真实路径（打包时从 asar 拷出，供系统播放器读取） */
 let chimeFile = ''
@@ -146,18 +153,23 @@ function setDoneInternal(id: string, done: boolean): void {
 function playChimeSound(): void {
   if (!chimeFile) return
   try {
-    const ps = spawn(
-      'powershell.exe',
-      [
-        '-NoProfile',
-        '-WindowStyle',
-        'Hidden',
-        '-Command',
-        `(New-Object System.Media.SoundPlayer '${chimeFile.replace(/'/g, "''")}').PlaySync()`
-      ],
-      { stdio: 'ignore', windowsHide: true }
-    )
-    ps.unref()
+    const child =
+      process.platform === 'darwin'
+        ? // macOS：内置 afplay 直接播 WAV
+          spawn('afplay', [chimeFile], { stdio: 'ignore' })
+        : // Windows：PowerShell SoundPlayer（PlaySync 让子进程播完再退出）
+          spawn(
+            'powershell.exe',
+            [
+              '-NoProfile',
+              '-WindowStyle',
+              'Hidden',
+              '-Command',
+              `(New-Object System.Media.SoundPlayer '${chimeFile.replace(/'/g, "''")}').PlaySync()`
+            ],
+            { stdio: 'ignore', windowsHide: true }
+          )
+    child.unref()
   } catch {
     /* 播放失败不影响提醒本身 */
   }
@@ -356,6 +368,34 @@ function registerIpc(): void {
       return ''
     }
   })
+
+  // ---------- 本地 AI ----------
+  ipcMain.handle('ai:status', () => ai.getStatus())
+
+  ipcMain.handle('ai:download:start', () => ai.startDownload())
+  ipcMain.handle('ai:download:cancel', () => ai.cancelDownload())
+
+  ipcMain.handle('ai:model:pick', async () => {
+    if (!win) return ''
+    const r = await dialog.showOpenDialog(win, {
+      title: '选择 GGUF 模型文件',
+      properties: ['openFile'],
+      filters: [{ name: 'GGUF 模型', extensions: ['gguf'] }]
+    })
+    if (r.canceled || !r.filePaths[0]) return ''
+    store.mutate(db => {
+      db.settings.aiModelPath = r.filePaths[0]
+    })
+    ai.onSettingsChanged()
+    broadcastDb()
+    return r.filePaths[0]
+  })
+
+  ipcMain.handle('ai:parse', (_e, text: string) => ai.quickAddParse(String(text ?? '')))
+  ipcMain.handle('ai:extractMany', (_e, text: string) => ai.extractDrafts('parseMany', String(text ?? '')))
+  ipcMain.handle('ai:journalTodos', (_e, content: string) => ai.extractDrafts('journalTodos', String(content ?? '')))
+  ipcMain.handle('ai:weeklyReview', (_e, payload) => ai.weeklyReview(payload))
+  ipcMain.handle('ai:test', (_e, text?: string) => ai.test(text))
 }
 
 function sleep(ms: number): Promise<void> {
@@ -428,7 +468,7 @@ async function runSmoke(): Promise<void> {
 app.whenReady().then(() => {
   store = new Store(app.getPath('userData'))
 
-  // 提示音拷贝到真实文件路径（PowerShell 播放器无法读取 asar 内部路径）
+  // 提示音拷贝到真实文件路径（系统播放器无法读取 asar 内部路径）
   try {
     chimeFile = join(app.getPath('userData'), 'chime.wav')
     copyFileSync(resourcePath('chime.wav'), chimeFile)
@@ -466,6 +506,18 @@ app.whenReady().then(() => {
   })
 
   scheduler = new Scheduler(store, onFires)
+
+  // 本地 AI（懒加载，默认关闭；模型文件放 userData/models，与数据同目录）
+  ai = new AiManager({
+    modelsDir: join(app.getPath('userData'), 'models'),
+    getSettings: () => store.get().settings,
+    notify: status => {
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.isDestroyed()) w.webContents.send('ai:state', status)
+      }
+    }
+  })
+
   registerIpc()
   createWindow()
   createTray(resourcePath('icon.png'), trayDeps)
@@ -479,6 +531,21 @@ app.whenReady().then(() => {
   })
 
   if (IS_SMOKE) void runSmoke()
+
+  // AI 探针（scripts/ai-smoke.mjs）：验证原生运行时/模型加载后打印并退出
+  const probeModel = process.env.NOTICE_ME_AI_MODEL || ''
+  if (IS_AI_PROBE) {
+    void ai
+      .probe(probeModel || undefined)
+      .then(r => {
+        console.log('[ai-probe]', JSON.stringify(r))
+        app.exit(0)
+      })
+      .catch(e => {
+        console.error('[ai-probe] FAIL', e instanceof Error ? e.message : e)
+        app.exit(1)
+      })
+  }
 })
 
 app.on('window-all-closed', () => {

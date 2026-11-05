@@ -87,6 +87,14 @@ export interface Settings {
   nagIntervalMin: number
   /** 启动后错过补发窗口（分钟） */
   missedFireWindowMin: number
+  /** 本地 AI 增强（Qwen2.5-1.5B 等 GGUF 小模型） */
+  aiEnabled: boolean
+  /** 快速添加：正则未识别出时间时用 AI 兜底解析 */
+  aiQuickAddFallback: boolean
+  /** 模型空闲自动卸载（分钟，0 = 常驻） */
+  aiIdleUnloadMin: number
+  /** 手动指定的 GGUF 模型路径（空 = 默认下载位置） */
+  aiModelPath: string
 }
 
 export interface Database {

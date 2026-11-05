@@ -1,7 +1,10 @@
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { Volume2, X } from 'lucide-react'
+import { Download, FileCog, FlaskConical, Loader2, Volume2, X } from 'lucide-react'
 import type { NotifyMode, Settings, ThemeMode } from '../../../shared/types'
 import { useStore } from '../store'
+
+// 构建时由 electron.vite.config.ts（renderer.define）从 package.json 注入
+declare const __APP_VERSION__: string
 
 const NOTIFY_MODES: Array<[NotifyMode, string]> = [
   ['card', '卡片'],
@@ -13,9 +16,12 @@ export default function SettingsModal(): JSX.Element {
   const db = useStore(s => s.db)!
   const updateSettings = useStore(s => s.updateSettings)
   const setSettingsOpen = useStore(s => s.setSettingsOpen)
+  const aiStatus = useStore(st => st.aiStatus)
   const s = db.settings
   const [dataDir, setDataDir] = useState('')
   const [capturing, setCapturing] = useState<'add' | 'show' | null>(null)
+  const [aiTestRaw, setAiTestRaw] = useState('')
+  const [aiTesting, setAiTesting] = useState(false)
 
   useEffect(() => {
     void window.noticeme.dataInfo().then(i => setDataDir(i.dir))
@@ -144,6 +150,102 @@ export default function SettingsModal(): JSX.Element {
           </Row>
         </Section>
 
+        <Section title="本地 AI（实验性）">
+          <Row label="启用本地 AI" desc="在本机运行 Qwen2.5-1.5B 小模型（约 1 GB），用于自由文本提取任务与生成周回顾。模型与数据都不出你的电脑，AI 不参与提醒触发。">
+            <Switch checked={s.aiEnabled} onChange={v => patch({ aiEnabled: v })} />
+          </Row>
+          {s.aiEnabled && aiStatus && (
+            <>
+              <Row
+                label="模型文件"
+                desc={
+                  aiStatus.downloading
+                    ? `下载中 ${aiStatus.downloadProgress >= 0 ? `${Math.round(aiStatus.downloadProgress * 100)}%` : ''}`
+                    : aiStatus.downloadError
+                      ? `下载失败：${aiStatus.downloadError}`
+                      : aiStatus.modelAvailable
+                        ? aiStatus.modelCustom
+                          ? '已就绪（手动指定的 GGUF 文件）'
+                          : '已就绪'
+                        : '尚未就绪：下载官方模型，或选择本地已下载的 GGUF 文件'
+                }
+              >
+                <div className="flex items-center gap-1">
+                  {aiStatus.downloading ? (
+                    <button onClick={() => void window.noticeme.aiDownloadCancel()} className="btn-ghost !px-2 !py-1 text-xs">
+                      取消
+                    </button>
+                  ) : !aiStatus.modelAvailable ? (
+                    <button
+                      onClick={() => void window.noticeme.aiDownloadStart()}
+                      className="btn-ghost !px-2 !py-1 text-xs"
+                      title="从 hf-mirror.com 下载（约 1 GB，支持断点续传）"
+                    >
+                      <Download size={13} /> 下载模型
+                    </button>
+                  ) : null}
+                  <button
+                    onClick={() => void window.noticeme.aiPickModel()}
+                    className="btn-ghost !px-2 !py-1 text-xs"
+                    title="选择本地 GGUF 模型文件"
+                  >
+                    <FileCog size={13} /> 选择文件…
+                  </button>
+                </div>
+              </Row>
+              {aiStatus.downloading && aiStatus.downloadProgress >= 0 && (
+                <div className="px-4 pb-3">
+                  <div className="h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                    <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${Math.round(aiStatus.downloadProgress * 100)}%` }} />
+                  </div>
+                </div>
+              )}
+              <Row label="快速添加 AI 兜底" desc="正则未识别出时间时用 AI 解析（原有语法始终优先，结果经预览确认）">
+                <Switch checked={s.aiQuickAddFallback} onChange={v => patch({ aiQuickAddFallback: v })} />
+              </Row>
+              <Row label="空闲自动卸载" desc="模型不推理时从内存释放（托盘应用常驻内存优先）">
+                <select
+                  value={s.aiIdleUnloadMin}
+                  onChange={e => patch({ aiIdleUnloadMin: Number(e.target.value) })}
+                  className="input !w-28 cursor-pointer"
+                >
+                  <option value={1}>1 分钟</option>
+                  <option value={3}>3 分钟</option>
+                  <option value={5}>5 分钟</option>
+                  <option value={10}>10 分钟</option>
+                  <option value={0}>常驻</option>
+                </select>
+              </Row>
+              <Row label="试一句" desc={aiStatus.busy || aiStatus.loading ? '模型加载 / 推理中…' : '用一句示例验证模型链路与延迟'}>
+                <button
+                  disabled={aiStatus.busy || aiStatus.loading || aiTesting || !aiStatus.modelAvailable}
+                  onClick={() => {
+                    setAiTesting(true)
+                    setAiTestRaw('')
+                    void window.noticeme
+                      .aiTest()
+                      .then(r => setAiTestRaw(`${(r.ms / 1000).toFixed(1)}s · ${r.raw}`))
+                      .catch(e => setAiTestRaw(`失败：${e instanceof Error ? e.message : String(e)}`))
+                      .finally(() => setAiTesting(false))
+                  }}
+                  className="btn-ghost !px-2 !py-1 text-xs disabled:opacity-40"
+                >
+                  {aiTesting || aiStatus.busy || aiStatus.loading ? <Loader2 size={13} className="animate-spin" /> : <FlaskConical size={13} />}
+                  运行
+                </button>
+              </Row>
+              {aiTestRaw && (
+                <div className="mx-4 mb-3 max-h-28 overflow-y-auto rounded-lg bg-zinc-50 px-3 py-2 text-[11px] leading-relaxed text-zinc-500 dark:bg-zinc-800/50 dark:text-zinc-400">
+                  {aiTestRaw}
+                </div>
+              )}
+              {aiStatus.lastError && (
+                <div className="mx-4 mb-3 rounded-lg bg-red-500/10 px-3 py-2 text-[11px] text-red-500">{aiStatus.lastError}</div>
+              )}
+            </>
+          )}
+        </Section>
+
         <Section title="通用">
           <Row label="开机自启">
             <Switch checked={s.autostart} onChange={v => patch({ autostart: v })} />
@@ -172,7 +274,7 @@ export default function SettingsModal(): JSX.Element {
         </Section>
 
         <p className="mt-4 border-t border-zinc-100 pt-3 text-center text-[11px] text-zinc-400 dark:border-zinc-800">
-          NoticeMe v0.1.0 · 本地优先，数据不出你的电脑
+          NoticeMe v{__APP_VERSION__} · 本地优先，数据不出你的电脑
         </p>
       </div>
     </div>

@@ -1,8 +1,12 @@
 // 日记/随笔模块：左侧按月分组列表 + 右侧全高编辑器
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BookOpen, Check, Pencil, Pin, PinOff, Plus, Search, Trash2, X } from 'lucide-react'
+import {
+  BookOpen, CalendarClock, Check, Copy, ListTodo, Loader2, Pencil, Pin, PinOff, Plus, Search, Sparkles, Trash2, X
+} from 'lucide-react'
 import type { JournalEntry } from '../../../shared/types'
-import { newJournalEntry } from '../../../shared/defaults'
+import type { TaskDraft } from '../../../shared/ai-schema'
+import { newJournalEntry, newTask, uid } from '../../../shared/defaults'
+import { formatDueLabel } from '../../../shared/datetime'
 import { useStore } from '../store'
 
 const MOODS = ['😊', '🙂', '😐', '😞', '😠'] as const
@@ -36,11 +40,110 @@ export default function JournalView(): JSX.Element {
   const db = useStore(s => s.db)!
   const upsert = useStore(s => s.upsertJournal)
   const remove = useStore(s => s.deleteJournal)
+  const upsertTask = useStore(s => s.upsertTask)
+  const aiStatus = useStore(s => s.aiStatus)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const contentRef = useRef<HTMLTextAreaElement>(null)
+
+  // ---------- 本地 AI：周回顾 / 日记待办提取 ----------
+  const [review, setReview] = useState<{
+    open: boolean
+    phase: 'running' | 'done' | 'error'
+    text: string
+    ms: number
+    error: string
+    saved: boolean
+  }>({ open: false, phase: 'running', text: '', ms: 0, error: '', saved: false })
+  const [todoSuggest, setTodoSuggest] = useState<{
+    phase: 'running' | 'ready' | 'error'
+    drafts: TaskDraft[]
+    added: number[]
+    error: string
+  }>({ phase: 'running', drafts: [], added: [], error: '' })
+
+  const aiReady = !!aiStatus && aiStatus.enabled && aiStatus.modelAvailable
+
+  const openReview = (): void => {
+    setReview({ open: true, phase: 'running', text: '', ms: 0, error: '', saved: false })
+    const now = new Date()
+    const cutoff = new Date(now.getTime() - 7 * 86400_000)
+    const cutoffStr = cutoff.toISOString().slice(0, 10)
+    const entries = db.entries
+      .filter(e => e.date >= cutoffStr)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(-24)
+      .map(e => ({ date: e.date, mood: e.mood, content: e.content.slice(0, 400) }))
+    const doneTaskTitles = db.tasks
+      .filter(t => t.done && t.completedAt && t.completedAt >= cutoff.toISOString())
+      .slice(-12)
+      .map(t => t.title)
+    const pendingTitles = db.tasks
+      .filter(t => !t.done && t.dueAt && t.dueAt < now.toISOString())
+      .slice(0, 5)
+      .map(t => t.title)
+    window.noticeme
+      .aiWeeklyReview({
+        sinceISO: cutoff.toISOString(),
+        untilISO: now.toISOString(),
+        entries,
+        doneTaskTitles,
+        pendingTitles
+      })
+      .then(r => setReview(p => (p.open ? { ...p, phase: 'done', text: r.text, ms: r.ms } : p)))
+      .catch(e =>
+        setReview(p =>
+          p.open ? { ...p, phase: 'error', error: e instanceof Error ? e.message : String(e) } : p
+        )
+      )
+  }
+
+  const saveReviewAsJournal = async (): Promise<void> => {
+    if (review.phase !== 'done' || !review.text) return
+    const now = new Date()
+    const entry = newJournalEntry({
+      title: `周回顾 ${now.getMonth() + 1}月${now.getDate()}日`,
+      content: review.text,
+      tags: ['周回顾'],
+      date: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    })
+    await upsert(entry)
+    setReview(p => ({ ...p, saved: true }))
+    setSelectedId(entry.id)
+  }
+
+  const startTodoExtract = (): void => {
+    if (!draft?.content.trim()) return
+    setTodoSuggest({ phase: 'running', drafts: [], added: [], error: '' })
+    window.noticeme
+      .aiJournalTodos(draft.content)
+      .then(r => setTodoSuggest({ phase: 'ready', drafts: r.drafts, added: [], error: '' }))
+      .catch(e =>
+        setTodoSuggest({
+          phase: 'error',
+          drafts: [],
+          added: [],
+          error: e instanceof Error ? e.message : String(e)
+        })
+      )
+  }
+
+  const addTodoDraft = async (index: number): Promise<void> => {
+    const d = todoSuggest.drafts[index]
+    if (!d) return
+    const task = newTask({
+      title: d.title,
+      priority: d.priority ?? 3,
+      dueAt: d.dueAt,
+      tags: d.tags,
+      projectId: null
+    })
+    if (d.dueAt) task.reminders = [{ id: uid(), offsetMin: null }]
+    await upsertTask(task)
+    setTodoSuggest(p => ({ ...p, added: [...p.added, index] }))
+  }
 
   useEffect(() => {
     return () => {
@@ -156,6 +259,13 @@ export default function JournalView(): JSX.Element {
               className="input !py-1.5 pl-8 text-[13px]"
             />
           </div>
+          <button
+            onClick={openReview}
+            className="btn !px-2 !py-1.5 text-zinc-400 hover:bg-accent/10 hover:text-accent"
+            title="生成本周回顾（本地 AI）"
+          >
+            <Sparkles size={14} />
+          </button>
           <button onClick={() => void createEntry()} className="btn-primary !px-2.5 !py-1.5" title="新建日记">
             <Plus size={14} />
           </button>
@@ -239,6 +349,19 @@ export default function JournalView(): JSX.Element {
             </div>
             <div className="ml-auto flex items-center gap-1">
               <button
+                onClick={startTodoExtract}
+                disabled={!aiReady || !draft.content.trim() || todoSuggest.phase === 'running'}
+                className={`btn !px-2 !py-1 text-xs ${
+                  todoSuggest.phase === 'running'
+                    ? 'text-accent'
+                    : 'text-zinc-400 hover:bg-accent/10 hover:text-accent disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-zinc-400'
+                }`}
+                title={!aiReady ? '需在设置中启用本地 AI 并下载模型' : '从这篇日记提取待办（本地 AI）'}
+              >
+                {todoSuggest.phase === 'running' ? <Loader2 size={13} className="animate-spin" /> : <ListTodo size={13} />}
+                提取待办
+              </button>
+              <button
                 onClick={() => save({ pinned: !draft.pinned })}
                 className={`btn !px-2 !py-1 text-xs ${
                   draft.pinned
@@ -304,6 +427,49 @@ export default function JournalView(): JSX.Element {
             )}
           </div>
 
+          {/* AI 待办提取建议 */}
+          {todoSuggest.phase === 'error' && (
+            <div className="mx-5 mt-1 rounded-xl bg-red-500/10 px-3 py-2 text-[12px] text-red-500 animate-fadeIn">
+              提取失败：{todoSuggest.error}
+            </div>
+          )}
+          {todoSuggest.phase === 'ready' && (
+            <div className="mx-5 mt-1 rounded-xl border border-zinc-200/80 bg-white p-2.5 shadow-soft animate-fadeIn dark:border-zinc-800 dark:bg-zinc-900">
+              <div className="mb-1.5 flex items-center justify-between px-0.5">
+                <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                  <ListTodo size={12} />
+                  {todoSuggest.drafts.length > 0 ? `提取到 ${todoSuggest.drafts.length} 条待办` : '这篇日记里没有明确的待办'}
+                </span>
+                <button onClick={() => setTodoSuggest({ phase: 'running', drafts: [], added: [], error: '' })} className="text-zinc-400 hover:text-accent">
+                  <X size={12} />
+                </button>
+              </div>
+              {todoSuggest.drafts.map((d, i) => {
+                const added = todoSuggest.added.includes(i)
+                return (
+                  <div key={`${d.title}-${i}`} className="flex items-center gap-2 rounded-lg bg-zinc-50 px-2.5 py-1.5 dark:bg-zinc-800/50">
+                    <span className="min-w-0 flex-1 truncate text-[13px]">{d.title}</span>
+                    {d.dueAt && (
+                      <span className="chip shrink-0 bg-accent/10 text-accent">
+                        <CalendarClock size={10} />
+                        {formatDueLabel(d.dueAt)}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => void addTodoDraft(i)}
+                      disabled={added}
+                      className={`btn shrink-0 !px-2 !py-0.5 text-[11px] ${
+                        added ? 'text-emerald-500' : 'text-zinc-400 hover:bg-accent/10 hover:text-accent'
+                      }`}
+                    >
+                      {added ? <><Check size={11} /> 已添加</> : '添加为任务'}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
           {/* 正文 */}
           <textarea
             ref={contentRef}
@@ -330,6 +496,66 @@ export default function JournalView(): JSX.Element {
             点左上角 <span className="text-accent">+</span> 开始第一篇。
           </p>
         </section>
+      )}
+
+      {/* 周回顾弹层 */}
+      {review.open && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-6 animate-fadeIn"
+          onClick={() => setReview(p => ({ ...p, open: false }))}
+        >
+          <div
+            className="max-h-[80vh] w-[560px] overflow-y-auto rounded-card border border-zinc-200 bg-white p-6 shadow-pop animate-slideUp dark:border-zinc-800 dark:bg-zinc-900"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-lg font-bold">
+                <Sparkles size={17} className="text-accent" />
+                本周回顾
+              </h2>
+              <button
+                onClick={() => setReview(p => ({ ...p, open: false }))}
+                className="rounded-md p-1.5 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            {review.phase === 'running' && (
+              <div className="flex flex-col items-center gap-3 py-12 text-center">
+                <Loader2 size={22} className="animate-spin text-accent" />
+                <p className="text-[13px] text-zinc-400">本地 AI 正在阅读你这一周的日记与任务…</p>
+              </div>
+            )}
+            {review.phase === 'error' && (
+              <div className="py-8 text-center text-[13px] text-red-500">生成失败：{review.error}</div>
+            )}
+            {review.phase === 'done' && (
+              <>
+                <div className="whitespace-pre-wrap rounded-xl bg-zinc-50 px-4 py-3 text-[13px] leading-relaxed dark:bg-zinc-800/50">
+                  {review.text}
+                </div>
+                <div className="mt-3 flex items-center justify-between">
+                  <span className="text-[11px] text-zinc-400">生成耗时 {(review.ms / 1000).toFixed(1)}s</span>
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={() => void navigator.clipboard.writeText(review.text)}
+                      className="btn-ghost !px-2.5 !py-1 text-xs"
+                    >
+                      <Copy size={13} /> 复制
+                    </button>
+                    <button
+                      onClick={() => void saveReviewAsJournal()}
+                      disabled={review.saved}
+                      className="btn-primary !px-3 !py-1 text-xs disabled:opacity-50"
+                    >
+                      {review.saved ? '已存入日记' : '存为日记'}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

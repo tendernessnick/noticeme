@@ -5,6 +5,14 @@ import { addDays, startOfDay } from './datetime'
 
 export const DATA_VERSION = 1
 
+/** 内置本地模型：Qwen2.5-1.5B-Instruct（Q4_K_M GGUF，约 1 GB），设置页按需下载 */
+export const AI_MODEL_FILE = 'qwen2.5-1.5b-instruct-q4_k_m.gguf'
+/** 模型下载源（依次尝试：国内镜像 → 官方） */
+export const AI_MODEL_URLS = [
+  'https://hf-mirror.com/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf',
+  'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf'
+]
+
 /** 浏览器 / Node 通用的 id 生成 */
 export function uid(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -29,7 +37,11 @@ export function defaultSettings(): Settings {
     snoozePresets: [5, 10, 30, 60, 1440],
     nagEnabled: false,
     nagIntervalMin: 10,
-    missedFireWindowMin: 30
+    missedFireWindowMin: 30,
+    aiEnabled: false,
+    aiQuickAddFallback: true,
+    aiIdleUnloadMin: 3,
+    aiModelPath: ''
   }
 }
 
