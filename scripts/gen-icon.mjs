@@ -74,7 +74,9 @@ const CRC_TABLE = (() => {
 
 function crc32(buf) {
   let c = 0xffffffff
-  for (let n = 0; n < 256; n++) {
+  // 注意：必须遍历 buf.length。曾误写成常量 256，导致所有 chunk 的 CRC 都算错——
+  // Windows 解码器宽容忽略，mac 打包的 Go 解码器（app-builder）严格校验直接失败
+  for (let n = 0; n < buf.length; n++) {
     c = CRC_TABLE[(c ^ buf[n]) & 0xff] ^ (c >>> 8)
   }
   return (c ^ 0xffffffff) >>> 0
