@@ -35,6 +35,9 @@ export default function Sidebar(): JSX.Element {
   const addProject = useStore(s => s.addProject)
   const updateProject = useStore(s => s.updateProject)
   const deleteProject = useStore(s => s.deleteProject)
+  const updater = useStore(s => s.updater)
+  const updateReady = updater?.phase === 'downloaded'
+  const updateVersion = updater?.version ?? ''
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
   /** 行内重命名状态 */
@@ -265,10 +268,16 @@ export default function Sidebar(): JSX.Element {
       <div className="mt-auto px-2 pb-3">
         <button
           onClick={() => setSettingsOpen(true)}
-          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-[13px] text-zinc-600 transition hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800/70"
+          className="relative flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-[13px] text-zinc-600 transition hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800/70"
         >
           <SettingsIcon size={16} className="text-zinc-400" />
           设置
+          {updateReady && (
+            <span
+              className="absolute right-3 h-1.5 w-1.5 rounded-full bg-emerald-500"
+              title={`新版本 v${updateVersion} 已就绪，重启后自动安装`}
+            />
+          )}
         </button>
       </div>
     </aside>

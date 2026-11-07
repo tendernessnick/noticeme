@@ -4,6 +4,7 @@ export {
   BrowserWindow,
   ipcMain,
   dialog,
+  shell,
   Tray,
   Menu,
   Notification,

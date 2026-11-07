@@ -17,11 +17,17 @@ export default function SettingsModal(): JSX.Element {
   const updateSettings = useStore(s => s.updateSettings)
   const setSettingsOpen = useStore(s => s.setSettingsOpen)
   const aiStatus = useStore(st => st.aiStatus)
+  const updater = useStore(st => st.updater)
   const s = db.settings
   const [dataDir, setDataDir] = useState('')
   const [capturing, setCapturing] = useState<'add' | 'show' | null>(null)
   const [aiTestRaw, setAiTestRaw] = useState('')
   const [aiTesting, setAiTesting] = useState(false)
+  const updaterPhase = updater?.phase ?? 'idle'
+  const updaterVersion = updater?.version ?? ''
+  const updaterProgress = updater?.progress ?? -1
+  const updaterError = updater?.error ?? ''
+  const updaterFallback = updater?.fallback ?? false
 
   useEffect(() => {
     void window.noticeme.dataInfo().then(i => setDataDir(i.dir))
@@ -281,6 +287,60 @@ export default function SettingsModal(): JSX.Element {
           <Row label="数据目录">
             <span className="max-w-[260px] truncate text-xs text-zinc-400" title={dataDir}>
               {dataDir}
+            </span>
+          </Row>
+        </Section>
+
+        <Section title="关于">
+          <Row
+            label="当前版本"
+            desc={
+              updaterPhase === 'downloaded'
+                ? `新版本 v${updaterVersion} 已就绪，重启后自动安装`
+                : updaterPhase === 'downloading'
+                  ? `正在下载 v${updaterVersion}…${updaterProgress >= 0 ? ` ${Math.round(updaterProgress * 100)}%` : ''}`
+                  : updaterPhase === 'available'
+                    ? `发现新版本 v${updaterVersion}`
+                    : updaterPhase === 'checking'
+                      ? '正在检查更新…'
+                      : updaterPhase === 'not-available'
+                        ? '已是最新版本'
+                        : updaterPhase === 'error'
+                          ? `检查失败：${updaterError}`
+                          : '本地优先，数据不出你的电脑'
+            }
+          >
+            <div className="flex items-center gap-1">
+              {updaterPhase === 'downloaded' ? (
+                <button onClick={() => void window.noticeme.updaterInstall()} className="btn-primary !px-3 !py-1 text-xs">
+                  重启更新
+                </button>
+              ) : updaterFallback && updaterPhase === 'available' ? (
+                <button onClick={() => void window.noticeme.updaterOpenPage()} className="btn-primary !px-3 !py-1 text-xs">
+                  去下载
+                </button>
+              ) : (
+                <button
+                  onClick={() => void window.noticeme.updaterCheck()}
+                  disabled={updaterPhase === 'checking' || updaterPhase === 'downloading'}
+                  className="btn-ghost !px-2 !py-1 text-xs disabled:opacity-40"
+                >
+                  {updaterPhase === 'checking' ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                  检查更新
+                </button>
+              )}
+            </div>
+          </Row>
+          {updaterPhase === 'downloading' && updaterProgress >= 0 && (
+            <div className="px-4 pb-3">
+              <div className="h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${Math.round(updaterProgress * 100)}%` }} />
+              </div>
+            </div>
+          )}
+          <Row label="版本信息">
+            <span className="max-w-[260px] truncate text-xs text-zinc-400" title="数据与模型全部本地保存">
+              v{__APP_VERSION__} · 本地优先
             </span>
           </Row>
         </Section>

@@ -2,6 +2,11 @@ appId: com.dsh.noticeme
 productName: NoticeMe
 # 使用 npm 安装时已下载的本地 Electron，避免打包期再次联网下载
 electronDist: node_modules/electron/dist
+# 自动更新源：GitHub Releases（electron-updater 读取 latest.yml；--publish never 时仅生成 app-update.yml）
+publish:
+  provider: github
+  owner: tendernessnick
+  repo: noticeme
 directories:
   output: dist
 files:

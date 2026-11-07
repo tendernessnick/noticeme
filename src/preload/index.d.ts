@@ -1,5 +1,5 @@
 // 渲染端 window.noticeme 类型声明
-import type { Database, JournalEntry, Project, Settings, Task, UiEvent, AlertEntry } from '../shared/types'
+import type { Database, JournalEntry, Project, Settings, Task, UiEvent, AlertEntry, UpdaterState } from '../shared/types'
 import type { AiStatus, TaskDraft } from '../shared/ai-schema'
 import type { ReviewInput } from '../shared/ai-prompts'
 import type { AiParseResult, AiDraftsResult, AiReviewResult, AiTestResult } from './index'
@@ -34,6 +34,10 @@ export interface NoticeMeApi {
   aiJournalTodos(content: string): Promise<AiDraftsResult>
   aiWeeklyReview(payload: ReviewInput): Promise<AiReviewResult>
   aiTest(text?: string): Promise<AiTestResult>
+  updaterState(): Promise<UpdaterState>
+  updaterCheck(): Promise<UpdaterState>
+  updaterInstall(): Promise<void>
+  updaterOpenPage(): Promise<void>
   alertAction(p: AlertActionPayload): Promise<void>
   alertSync(): Promise<{ items: AlertEntry[]; presets: number[] }>
   alertResize(h: number): Promise<void>
@@ -42,6 +46,7 @@ export interface NoticeMeApi {
   onAlertQueue(cb: (p: { items: AlertEntry[]; presets: number[] }) => void): () => void
   onAiState(cb: (s: AiStatus) => void): () => void
   onAiProgress(cb: (p: { chars: number }) => void): () => void
+  onUpdaterState(cb: (s: UpdaterState) => void): () => void
 }
 
 declare global {

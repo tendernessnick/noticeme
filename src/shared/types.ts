@@ -124,3 +124,18 @@ export interface AlertEntry {
 }
 
 export type UiEvent = { type: 'quickadd' } | { type: 'open-task'; taskId: string }
+
+/** 自动更新状态（主进程 → 渲染端推送） */
+export interface UpdaterState {
+  /** idle | checking | available | not-available | downloading | downloaded | error */
+  phase: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
+  /** 发现的新版本号 */
+  version: string
+  /** 0..1；-1 = 未知 */
+  progress: number
+  error: string
+  /** 更新说明（Release 正文，可能为空） */
+  notes: string
+  /** true = 当前形态无法静默更新（portable / macOS 未签名），只提示去下载页 */
+  fallback: boolean
+}

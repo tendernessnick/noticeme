@@ -9,10 +9,12 @@ import { Store } from './store'
 import { Scheduler } from './scheduler'
 import { AlertManager } from './alerts'
 import { AiManager } from './ai/manager'
+import { AppUpdater } from './updater'
 import { showToast } from './notify'
 import { createTray, rebuild } from './tray'
 import { applyShortcuts } from './shortcuts'
 import { defaultSettings, newTask } from '../shared/defaults'
+import type { UpdaterState } from '../shared/types'
 import { nextOccurrence } from '../shared/recurrence'
 import type { AlertEntry, JournalEntry, Project, Settings, Task, UiEvent } from '../shared/types'
 import type { TrayDeps } from './tray-deps'
@@ -41,6 +43,7 @@ let store: Store
 let scheduler: Scheduler
 let alerts: AlertManager
 let ai: AiManager
+let updater: AppUpdater
 let quitting = false
 /** 提示音的本地真实路径（打包时从 asar 拷出，供系统播放器读取） */
 let chimeFile = ''
@@ -107,6 +110,12 @@ function showMain(opts?: { taskId?: string }): void {
 function broadcastDb(): void {
   for (const w of BrowserWindow.getAllWindows()) {
     if (!w.isDestroyed()) w.webContents.send('db:updated', store.get())
+  }
+}
+
+function broadcastUpdater(state: UpdaterState): void {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send('updater:state', state)
   }
 }
 
@@ -399,6 +408,12 @@ function registerIpc(): void {
   ipcMain.handle('ai:journalTodos', (_e, content: string) => ai.extractDrafts('journalTodos', String(content ?? '')))
   ipcMain.handle('ai:weeklyReview', (_e, payload) => ai.weeklyReview(payload))
   ipcMain.handle('ai:test', (_e, text?: string) => ai.test(text))
+
+  // ---------- 自动更新 ----------
+  ipcMain.handle('updater:state', () => updater.getState())
+  ipcMain.handle('updater:check', () => updater.checkManual())
+  ipcMain.handle('updater:install', () => updater.install())
+  ipcMain.handle('updater:openPage', () => updater.openReleasesPage())
 }
 
 function sleep(ms: number): Promise<void> {
@@ -525,6 +540,10 @@ app.whenReady().then(() => {
       }
     }
   })
+
+  // 自动更新：启动静默检查 + 6h 轮询；失败静默；退出静默安装（dev 下自动禁用）
+  updater = new AppUpdater(state => broadcastUpdater(state))
+  updater.init()
 
   registerIpc()
   createWindow()

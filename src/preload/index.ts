@@ -1,6 +1,6 @@
 // 预加载脚本：contextBridge 暴露类型安全 API
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Database, JournalEntry, Project, Settings, Task } from '../shared/types'
+import type { Database, JournalEntry, Project, Settings, Task, UpdaterState } from '../shared/types'
 import type { AiStatus, TaskDraft } from '../shared/ai-schema'
 import type { ReviewInput } from '../shared/ai-prompts'
 
@@ -59,6 +59,11 @@ const api = {
   aiJournalTodos: (content: string): Promise<AiDraftsResult> => ipcRenderer.invoke('ai:journalTodos', content),
   aiWeeklyReview: (payload: ReviewInput): Promise<AiReviewResult> => ipcRenderer.invoke('ai:weeklyReview', payload),
   aiTest: (text?: string): Promise<AiTestResult> => ipcRenderer.invoke('ai:test', text),
+  // ---------- 自动更新 ----------
+  updaterState: (): Promise<UpdaterState> => ipcRenderer.invoke('updater:state'),
+  updaterCheck: (): Promise<UpdaterState> => ipcRenderer.invoke('updater:check'),
+  updaterInstall: (): Promise<void> => ipcRenderer.invoke('updater:install'),
+  updaterOpenPage: (): Promise<void> => ipcRenderer.invoke('updater:openPage'),
   alertAction: (p: AlertActionPayload): Promise<void> => ipcRenderer.invoke('alert:action', p),
   alertSync: (): Promise<{ items: unknown[]; presets: number[] }> =>
     ipcRenderer.invoke('alert:sync'),
@@ -82,6 +87,11 @@ const api = {
     const l = (_e: unknown, s: AiStatus): void => cb(s)
     ipcRenderer.on('ai:state', l as never)
     return () => ipcRenderer.removeListener('ai:state', l as never)
+  },
+  onUpdaterState: (cb: (s: UpdaterState) => void): (() => void) => {
+    const l = (_e: unknown, s: UpdaterState): void => cb(s)
+    ipcRenderer.on('updater:state', l as never)
+    return () => ipcRenderer.removeListener('updater:state', l as never)
   },
   onAiProgress: (cb: (p: { chars: number }) => void): (() => void) => {
     const l = (_e: unknown, p: { chars: number }): void => cb(p)
