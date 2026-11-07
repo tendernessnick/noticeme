@@ -4,7 +4,7 @@
 /** 主进程 → worker */
 export type WorkerRequest =
   | { id: number; type: 'probe' }
-  | { id: number; type: 'load'; modelPath: string }
+  | { id: number; type: 'load'; modelPath: string; /** true = Vulkan GPU（失败由主进程回退 CPU） */ gpu: boolean }
   | {
       id: number
       type: 'infer'
@@ -36,6 +36,6 @@ export interface WorkerProgress {
 /** worker → 主进程 */
 export type WorkerResponse =
   | { id: number; ok: true; type: 'probe'; result: ProbeResult }
-  | { id: number; ok: true; type: 'load'; ms: number }
+  | { id: number; ok: true; type: 'load'; ms: number; /** 实际使用的后端（请求 GPU 但失败回退 CPU 时为 false） */ gpuUsed: boolean; /** 本机可见的 Vulkan 设备名（GPU 模式时返回） */ gpuDevices?: string[] }
   | { id: number; ok: true; type: 'infer'; result: string; ms: number }
   | { id: number; ok: false; type: WorkerRequest['type']; error: string }

@@ -28,7 +28,9 @@ if (IS_SMOKE) {
 }
 if (IS_AI_PROBE) {
   // AI 探针同样独立数据目录：避免与常驻实例争单实例锁（锁文件在 userData 中）
-  app.setPath('userData', join(tmpdir(), `noticeme-ai-probe-${Date.now()}`))
+  // NOTICE_ME_AI_USERDATA=<dir> 可指定种子数据目录（预置 aiEnabled/aiGpu 等设置，验证真实产品路径）
+  const seedDir = process.env.NOTICE_ME_AI_USERDATA || ''
+  app.setPath('userData', seedDir || join(tmpdir(), `noticeme-ai-probe-${Date.now()}`))
 }
 
 app.setAppUserModelId('com.dsh.noticeme')
@@ -308,6 +310,7 @@ function registerIpc(): void {
       db.settings = { ...defaultSettings(), ...db.settings, ...patch }
     })
     applySettingsSideEffects()
+    ai.onSettingsChanged()
     rebuild()
     broadcastDb()
   })
@@ -540,12 +543,21 @@ app.whenReady().then(() => {
   // AI 探针（scripts/ai-smoke.mjs）：验证原生运行时/模型加载/真实推理后打印并退出
   const probeModel = process.env.NOTICE_ME_AI_MODEL || ''
   const inferSample = process.env.NOTICE_ME_AI_INFER || ''
+  const gpuProbe = process.env.NOTICE_ME_AI_GPU === '1'
+  const seeded = !!process.env.NOTICE_ME_AI_USERDATA
   if (IS_AI_PROBE) {
     void ai
-      .probe(probeModel || undefined)
+      // 种子模式：模型加载留给 ensureLoaded 走真实路径（含 GPU 预检/回退），probe 只测运行时
+      .probe(seeded ? undefined : probeModel || undefined, gpuProbe && !seeded)
       .then(async r => {
         if (!inferSample || !probeModel) return { ...r, inferMs: null, raw: null }
-        const { raw, ms } = await ai.debugInfer('journalTodos', inferSample)
+        const inferTimeout = Number(process.env.NOTICE_ME_AI_INFER_TIMEOUT_MS) || 120_000
+        if (process.env.NOTICE_ME_AI_USERDATA) {
+          // 种子设置模式：走真实产品路径（含 GPU 预检/回退），并回报最终 AI 状态
+          const { raw, ms, status } = await ai.debugInferViaSettings('journalTodos', inferSample, inferTimeout)
+          return { ...r, inferMs: ms, raw, status: { gpuActive: status.gpuActive, gpuFallback: status.gpuFallback, lastError: status.lastError } }
+        }
+        const { raw, ms } = await ai.debugInfer('journalTodos', inferSample, inferTimeout)
         return { ...r, inferMs: ms, raw }
       })
       .then(r => {
@@ -553,7 +565,8 @@ app.whenReady().then(() => {
         app.exit(0)
       })
       .catch(e => {
-        console.error('[ai-probe] FAIL', e instanceof Error ? e.message : e)
+        const st = ai.getStatus()
+        console.error('[ai-probe] FAIL', e instanceof Error ? e.message : e, JSON.stringify({ loaded: st.loaded, gpuActive: st.gpuActive, gpuFallback: st.gpuFallback, lastError: st.lastError }))
         app.exit(1)
       })
   }

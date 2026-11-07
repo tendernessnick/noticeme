@@ -530,7 +530,7 @@ export default function JournalView(): JSX.Element {
                   本地 AI 正在阅读你这一周的日记与任务…
                   <br />
                   <span className="text-[11px] text-zinc-400/80">
-                    已 {reviewProgress.elapsed}s{reviewProgress.chars > 0 ? ` · 已生成 ${reviewProgress.chars} 字` : ''}（1.5B CPU 推理约需 10~30 秒，请稍候）
+                    已 {reviewProgress.elapsed}s{reviewProgress.chars > 0 ? ` · 已生成 ${reviewProgress.chars} 字` : ''}（推理时长取决于机器负载，通常 10~60 秒，请稍候）
                   </span>
                 </p>
               </div>

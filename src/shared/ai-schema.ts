@@ -36,6 +36,12 @@ export interface AiStatus {
   downloadError: string
   lastError: string
   idleUnloadMin: number
+  /** GPU 加速开关（设置值） */
+  gpuEnabled: boolean
+  /** 当前加载的模型实际使用的后端 */
+  gpuActive: boolean
+  /** GPU 初始化失败已自动回退 CPU */
+  gpuFallback: boolean
 }
 
 /**

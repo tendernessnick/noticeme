@@ -11,17 +11,17 @@ files:
   - resources/icon.ico
   - resources/icon-mac.png
   - resources/chime.wav
-  # 排除未使用的 GPU 变体二进制（CUDA/Vulkan/ARM，合计数百 MB；本应用固定 CPU 推理）
+  # 排除未使用的 GPU 变体二进制（CUDA/ARM，数百 MB；Vulkan 保留用于核显 GPU 加速）
   - "!node_modules/@node-llama-cpp/win-arm64/**"
   - "!node_modules/@node-llama-cpp/win-x64-cuda/**"
   - "!node_modules/@node-llama-cpp/win-x64-cuda-ext/**"
-  - "!node_modules/@node-llama-cpp/win-x64-vulkan/**"
 # node-llama-cpp 的原生 addon（Windows 为 .node+DLL，macOS 为 .node+dylib）不能从 asar 内加载，必须解包
 # 平台二进制由 npm 按当前系统安装，另一平台的 glob 不匹配即为空操作，一份配置两端通用
 # 模型 GGUF 不进安装包——首次使用时下载到 userData/models
 asarUnpack:
   - "**/*.node"
   - "node_modules/@node-llama-cpp/win-x64/**"
+  - "node_modules/@node-llama-cpp/win-x64-vulkan/**"
   - "node_modules/@node-llama-cpp/darwin-arm64/**"
   - "node_modules/@node-llama-cpp/darwin-x64/**"
 win:

@@ -95,6 +95,8 @@ export interface Settings {
   aiIdleUnloadMin: number
   /** 手动指定的 GGUF 模型路径（空 = 默认下载位置） */
   aiModelPath: string
+  /** GPU 加速（Vulkan 核显推理，失败自动回退 CPU） */
+  aiGpu: boolean
 }
 
 export interface Database {

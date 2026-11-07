@@ -41,7 +41,8 @@ export function defaultSettings(): Settings {
     aiEnabled: false,
     aiQuickAddFallback: true,
     aiIdleUnloadMin: 3,
-    aiModelPath: ''
+    aiModelPath: '',
+    aiGpu: false
   }
 }
 

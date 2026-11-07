@@ -397,7 +397,7 @@ export default function QuickAdd(): JSX.Element {
             <div className="flex items-center gap-2 px-1 py-3 text-[12px] text-zinc-400">
               <Loader2 size={13} className="animate-spin text-accent" />
               本地 AI 正在拆解… {pasteProgress.elapsed}s
-              {pasteProgress.chars > 0 && ` · 已生成 ${pasteProgress.chars} 字`}（CPU 推理约需 10~30 秒）
+              {pasteProgress.chars > 0 && ` · 已生成 ${pasteProgress.chars} 字`}（推理时长取决于机器负载，通常 10~60 秒）
             </div>
           )}
           {paste.state === 'error' && (

@@ -216,6 +216,18 @@ export default function SettingsModal(): JSX.Element {
                   <option value={0}>常驻</option>
                 </select>
               </Row>
+              <Row
+                label="GPU 加速（实验性）"
+                desc={
+                  aiStatus.gpuFallback
+                    ? 'GPU 初始化失败，本次已自动回退 CPU（重新开关可重试）'
+                    : aiStatus.gpuActive
+                      ? '已启用：Vulkan 核显推理（生成速度约 2~4 倍）'
+                      : '用核显（Vulkan）推理，速度约 2~4 倍；初始化失败自动回退 CPU'
+                }
+              >
+                <Switch checked={s.aiGpu} onChange={v => patch({ aiGpu: v })} />
+              </Row>
               <Row label="试一句" desc={aiStatus.busy || aiStatus.loading ? '模型加载 / 推理中…' : '用一句示例验证模型链路与延迟'}>
                 <button
                   disabled={aiStatus.busy || aiStatus.loading || aiTesting || !aiStatus.modelAvailable}

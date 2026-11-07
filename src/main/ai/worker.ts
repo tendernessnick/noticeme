@@ -19,6 +19,8 @@ let llama: Llama | null = null
 let model: LlamaModel | null = null
 let context: LlamaContext | null = null
 let grammar: LlamaJsonSchemaGrammar<typeof TASK_DRAFTS_SCHEMA> | null = null
+/** 当前 llama 实例的实际后端（请求 GPU 但失败时为 false） */
+let gpuUsed = false
 const aborts = new Map<number, AbortController>()
 
 const reply = (msg: WorkerResponse): void => port.postMessage(msg)
@@ -32,10 +34,15 @@ async function loadRuntime(): Promise<LlamaCpp> {
   return nlc
 }
 
-async function doLoad(modelPath: string): Promise<void> {
+/** 初始化后端并加载模型；gpu=true 请求 Vulkan，失败抛错由主进程决定回退 */
+async function doLoad(modelPath: string, gpu: boolean): Promise<void> {
   if (context) return
   const m = await loadRuntime()
-  llama ??= await m.getLlama({ gpu: false, logLevel: m.LlamaLogLevel.error })
+  // 诊断/调优通道：强制指定 Vulkan 设备索引（逗号分隔），须在原生后端初始化前设置
+  const vkDevice = process.env.NOTICE_ME_AI_VK_DEVICE
+  if (vkDevice && gpu) process.env.GGML_VK_VISIBLE_DEVICES = vkDevice
+  llama ??= await m.getLlama({ gpu: gpu ? 'vulkan' : false, logLevel: m.LlamaLogLevel.error })
+  gpuUsed = gpu
   model ??= await llama.loadModel({ modelPath })
   context ??= await model.createContext({ contextSize: 4096, sequences: 1 })
   grammar ??= await llama.createGrammarForJsonSchema(TASK_DRAFTS_SCHEMA)
@@ -64,14 +71,21 @@ async function handle(req: WorkerRequest): Promise<void> {
       const initStart = Date.now()
       const inst = llama ?? (await m.getLlama({ gpu: false, logLevel: m.LlamaLogLevel.error }))
       llama ??= inst
+      gpuUsed = false
       const result: ProbeResult = { initMs: Date.now() - initStart, loadMs: null, ctxMs: null }
       reply({ id: req.id, ok: true, type: 'probe', result })
       return
     }
 
     if (req.type === 'load') {
-      await doLoad(req.modelPath)
-      reply({ id: req.id, ok: true, type: 'load', ms: Date.now() - t0 })
+      await doLoad(req.modelPath, req.gpu)
+      let gpuDevices: string[] | undefined
+      if (req.gpu && llama) {
+        try {
+          gpuDevices = await llama.getGpuDeviceNames()
+        } catch { /* ignore */ }
+      }
+      reply({ id: req.id, ok: true, type: 'load', ms: Date.now() - t0, gpuUsed, gpuDevices })
       return
     }
 
