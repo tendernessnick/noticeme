@@ -9,6 +9,13 @@ import type { UpdaterState } from '../shared/types'
 const CHECK_INTERVAL_MS = 6 * 3600_000
 const REPO_URL = 'https://github.com/tendernessnick/noticeme/releases/latest'
 
+/** electron-updater 的错误 message 会带上完整 HTTP 头转储——只取首行并截断，供设置页展示 */
+function sanitizeUpdaterError(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e)
+  const firstLine = raw.split('\n')[0].trim()
+  return firstLine.length > 160 ? `${firstLine.slice(0, 160)}…` : firstLine
+}
+
 export class AppUpdater {
   private state: UpdaterState = { phase: 'idle', version: '', progress: -1, error: '', notes: '', fallback: false }
   /** 更新器不可用（dev / 平台不支持 / 初始化失败）时置 true，所有调用静默短路 */
@@ -56,7 +63,7 @@ export class AppUpdater {
       })
       autoUpdater.on('error', e => {
         // 失败静默：只记录到状态里，供设置页展示，绝不打扰
-        this.set({ phase: 'error', error: e instanceof Error ? e.message : String(e) })
+        this.set({ phase: 'error', error: sanitizeUpdaterError(e) })
       })
     } catch (e) {
       console.error('[updater] init failed:', e)
