@@ -20,6 +20,7 @@ import type { NoteFolder, Project } from '../../../shared/types'
 import type { View } from '../store'
 import { useStore } from '../store'
 import { DEFAULT_NOTE_FOLDER_ID, PROJECT_PALETTE } from '../../../shared/defaults'
+import { collectFolderSubtree } from '../../../shared/notes'
 import { START_OF_TODAY } from '../utils/ui'
 
 const NAV: Array<{ kind: View['kind']; label: string; icon: typeof Sun }> = [
@@ -189,8 +190,10 @@ export default function Sidebar(): JSX.Element {
 
   const doDeleteFolder = async (id: string): Promise<void> => {
     cancelFolderConfirm()
+    // 级联删除整个子树：当前视图在被删子树内时回退今天
+    const doomed = collectFolderSubtree(db.noteFolders, id)
     await deleteNoteFolder(id)
-    if (view.kind === 'noteFolder' && view.folderId === id) setView({ kind: 'today' })
+    if (view.kind === 'noteFolder' && view.folderId && doomed.has(view.folderId)) setView({ kind: 'today' })
   }
 
   /** 递归渲染一个文件夹行（含确认条、子级新建输入框、子树） */
@@ -201,7 +204,8 @@ export default function Sidebar(): JSX.Element {
     const isEditing = editingFolderId === folder.id
     const isConfirming = confirmingFolderId === folder.id
     const isDefault = folder.id === DEFAULT_NOTE_FOLDER_ID
-    const rowPad = { paddingLeft: 10 + depth * 14 }
+    // 缩进基准：根级与「清单」区色点/名字列对齐（容器 px-2 + 折叠列 14px + 间距 4px + 色点 8px + 间距 4px = 名字起点 38px）
+    const rowPad = { paddingLeft: depth * 14 }
     if (isEditing) {
       return (
         <div key={folder.id} className="mb-1 pr-2" style={rowPad}>
@@ -225,7 +229,7 @@ export default function Sidebar(): JSX.Element {
           data-folder-id={folder.id}
           onClick={() => setView({ kind: 'noteFolder', folderId: folder.id })}
           style={rowPad}
-          className={`group mb-0.5 flex w-full cursor-pointer items-center gap-1.5 rounded-lg py-1.5 pr-2 text-[13px] transition ${
+          className={`group mb-0.5 flex w-full cursor-pointer items-center gap-1 rounded-lg py-1.5 pr-2 text-[13px] transition ${
             isActive
               ? 'bg-accent/10 font-semibold text-accent dark:bg-accent/20'
               : 'text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800/70'
@@ -238,12 +242,12 @@ export default function Sidebar(): JSX.Element {
                 toggleCollapse(folder.id)
               }}
               title={isCollapsed ? '展开' : '折叠'}
-              className="rounded p-0.5 text-zinc-400 hover:bg-zinc-200/80 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+              className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded text-zinc-400 hover:bg-zinc-200/80 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
             >
-              {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+              {isCollapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
             </button>
           ) : (
-            <span className="w-[17px] shrink-0" />
+            <span className="h-3.5 w-3.5 shrink-0" />
           )}
           <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: folder.color }} />
           <span className="min-w-0 flex-1 truncate text-left">{folder.name}</span>
@@ -277,7 +281,7 @@ export default function Sidebar(): JSX.Element {
                   e.stopPropagation()
                   startFolderConfirm(folder.id)
                 }}
-                title="删除文件夹（笔记移入默认）"
+                title="删除文件夹（子级一并删除，笔记移入默认）"
                 className="rounded p-0.5 text-zinc-400 hover:bg-red-500/10 hover:text-red-500"
               >
                 <Trash2 size={12} />
@@ -292,7 +296,7 @@ export default function Sidebar(): JSX.Element {
         </div>
         {isConfirming && (
           <div className="mb-1 flex items-center gap-1.5 rounded-lg bg-red-500/10 px-2.5 py-1 text-[11px] text-red-500 animate-fadeIn">
-            <span className="flex-1 truncate">删除文件夹？笔记移入默认</span>
+            <span className="flex-1 truncate">删除文件夹？子级一并删除，笔记移入默认</span>
             <button
               onClick={() => void doDeleteFolder(folder.id)}
               className="rounded bg-red-500 px-1.5 py-0.5 font-medium text-white hover:bg-red-600"
@@ -305,7 +309,7 @@ export default function Sidebar(): JSX.Element {
           </div>
         )}
         {addingParentId === folder.id && (
-          <div className="mb-1 pr-2" style={{ paddingLeft: 10 + (depth + 1) * 14 }}>
+          <div className="mb-1 pr-2" style={{ paddingLeft: (depth + 1) * 14 }}>
             <input
               autoFocus
               value={newFolderName}

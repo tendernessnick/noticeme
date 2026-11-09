@@ -14,6 +14,7 @@ import { showToast } from './notify'
 import { createTray, rebuild } from './tray'
 import { applyShortcuts } from './shortcuts'
 import { defaultSettings, newTask, DEFAULT_NOTE_FOLDER_ID } from '../shared/defaults'
+import { collectFolderSubtree } from '../shared/notes'
 import type { Note, NoteFolder, UpdaterState } from '../shared/types'
 import { nextOccurrence } from '../shared/recurrence'
 import type { AlertEntry, JournalEntry, Project, Settings, Task, UiEvent } from '../shared/types'
@@ -421,10 +422,10 @@ function registerIpc(): void {
   ipcMain.handle('noteFolder:delete', (_e, id: string) => {
     store.mutate(db => {
       if (id === DEFAULT_NOTE_FOLDER_ID) return // 默认文件夹不可删
-      // 子文件夹提升为根级，直属笔记移入默认文件夹
-      db.noteFolders = db.noteFolders.map(f => (f.parentId === id ? { ...f, parentId: null } : f))
-      db.noteFolders = db.noteFolders.filter(f => f.id !== id)
-      for (const n of db.notes) if (n.folderId === id) n.folderId = DEFAULT_NOTE_FOLDER_ID
+      // 级联删除整个子树，子树内所有笔记移入默认文件夹（不丢数据）
+      const doomed = collectFolderSubtree(db.noteFolders, id)
+      db.noteFolders = db.noteFolders.filter(f => !doomed.has(f.id))
+      for (const n of db.notes) if (doomed.has(n.folderId)) n.folderId = DEFAULT_NOTE_FOLDER_ID
     })
     broadcastDb()
   })
