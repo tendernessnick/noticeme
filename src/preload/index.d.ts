@@ -1,8 +1,8 @@
 // 渲染端 window.noticeme 类型声明
 import type { Database, JournalEntry, Note, NoteFolder, Project, Settings, Task, UiEvent, AlertEntry, UpdaterState } from '../shared/types'
-import type { AiStatus, TaskDraft } from '../shared/ai-schema'
-import type { ReviewInput } from '../shared/ai-prompts'
-import type { AiParseResult, AiDraftsResult, AiReviewResult, AiTestResult } from './index'
+import type { AiStatus, FocusSuggestion, TaskDraft } from '../shared/ai-schema'
+import type { FocusCandidate, ReviewInput } from '../shared/ai-prompts'
+import type { AiParseResult, AiDraftsResult, AiFocusSuggestResult, AiReviewResult, AiTestResult } from './index'
 
 export interface AlertActionPayload {
   type: 'complete' | 'snooze' | 'open' | 'dismiss'
@@ -15,6 +15,7 @@ export interface NoticeMeApi {
   upsertTask(task: Task): Promise<void>
   deleteTask(id: string): Promise<void>
   setTaskDone(id: string, done: boolean): Promise<void>
+  planTasksDay(ids: string[], day: string | null): Promise<void>
   upsertJournal(entry: JournalEntry): Promise<void>
   deleteJournal(id: string): Promise<void>
   upsertNote(note: Note): Promise<void>
@@ -37,6 +38,7 @@ export interface NoticeMeApi {
   aiParse(text: string): Promise<AiParseResult>
   aiExtractMany(text: string): Promise<AiDraftsResult>
   aiJournalTodos(content: string): Promise<AiDraftsResult>
+  aiFocusSuggest(candidates: FocusCandidate[]): Promise<AiFocusSuggestResult>
   aiWeeklyReview(payload: ReviewInput): Promise<AiReviewResult>
   aiTest(text?: string): Promise<AiTestResult>
   updaterState(): Promise<UpdaterState>

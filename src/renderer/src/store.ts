@@ -4,7 +4,7 @@ import type { Database, JournalEntry, Note, NoteFolder, Project, Settings, Task,
 import type { AiStatus } from '../../shared/ai-schema'
 import { applyTheme } from './utils/theme'
 
-export type ViewKind = 'today' | 'upcoming' | 'all' | 'done' | 'journal' | 'project' | 'noteFolder'
+export type ViewKind = 'today' | 'upcoming' | 'all' | 'done' | 'journal' | 'project' | 'noteFolder' | 'focus'
 
 export interface View {
   kind: ViewKind
@@ -35,6 +35,7 @@ interface AppState {
   upsertTask(t: Task): Promise<void>
   deleteTask(id: string): Promise<void>
   setDone(id: string, done: boolean): Promise<void>
+  planTasksDay(ids: string[], day: string | null): Promise<void>
   upsertJournal(e: JournalEntry): Promise<void>
   deleteJournal(id: string): Promise<void>
   upsertNote(n: Note): Promise<void>
@@ -93,6 +94,9 @@ export const useStore = create<AppState>((set, get) => ({
   },
   setDone: async (id, done) => {
     await window.noticeme.setTaskDone(id, done)
+  },
+  planTasksDay: async (ids, day) => {
+    await window.noticeme.planTasksDay(ids, day)
   },
   upsertJournal: async e => {
     await window.noticeme.upsertJournal(e)

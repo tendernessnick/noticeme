@@ -86,6 +86,46 @@ export function buildExtractionPrompt(kind: AiTaskKind, text: string, now: Date 
   return { system: lines.join('\n'), user: text.trim().slice(0, 2000) }
 }
 
+/** 今日聚焦候选任务（渲染端组装好的紧凑行，prompt 保持短小适配 1.5B） */
+export interface FocusCandidate {
+  id: string
+  /** 标题（渲染端已截断） */
+  title: string
+  /** 紧凑截止描述：已逾期2天 / 今天到期 / 明天到期 / 3天后到期 / 无截止 */
+  due: string
+  /** 1 = 最高 */
+  priority: number
+  /** 是否已在今天计划中（模型应避免重复挑） */
+  planned: boolean
+}
+
+/**
+ * 今日聚焦「AI 帮我排今天」：从候选任务中挑选今天最值得做的（约束解码输出 picks）。
+ * 规则注入过期优先/截止临近/高优先级/宁缺毋滥；理由 ≤15 字供预览展示。
+ */
+export function buildFocusSuggestPrompt(input: { candidates: FocusCandidate[]; now: Date }): { system: string; user: string } {
+  const system = [
+    '你是待办应用的每日规划助手。从候选任务中挑选今天最值得做的（最多 6 条，宁缺毋滥）。',
+    '规则：',
+    '1. 已逾期的优先；2. 截止日越近优先；3. 优先级数字越小（越紧急）优先；4. 不要挑已列入今天计划的；5. 挑选数量控制在 2~6 条。',
+    '输出 JSON：{"picks":[{"id":"候选id","reason":"不超过15字的理由"}]}。直接输出 JSON，不要输出别的内容。'
+  ].join('\n')
+
+  const exId = input.candidates[0]?.id ?? 't1'
+  const lines: string[] = []
+  lines.push(`示例（假设候选如下）：`)
+  lines.push(`t1|修复登录页报错|已逾期1天|1`)
+  lines.push(`输出：{"picks":[{"id":"${exId}","reason":"已逾期，先处理"}]}`)
+  lines.push('')
+  const wd = '日一二三四五六'[input.now.getDay()]
+  lines.push(`今天是 ${input.now.getMonth() + 1}月${input.now.getDate()}日 星期${wd}。候选任务：`)
+  for (const c of input.candidates) {
+    lines.push(`${c.id}|${c.title}|${c.due}${c.planned ? '|已在今日计划' : ''}|p${c.priority}`)
+  }
+
+  return { system, user: lines.join('\n').slice(0, 3000) }
+}
+
 /** 周回顾（自由文本输出，不用 grammar） */
 export function buildWeeklyReviewPrompt(input: ReviewInput): { system: string; user: string } {
   const system = [

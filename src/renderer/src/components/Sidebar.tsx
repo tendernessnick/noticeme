@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Sun,
+  Sunrise,
   CalendarDays,
   Layers,
   CheckCircle2,
@@ -19,11 +20,12 @@ import {
 import type { NoteFolder, Project } from '../../../shared/types'
 import type { View } from '../store'
 import { useStore } from '../store'
-import { DEFAULT_NOTE_FOLDER_ID, PROJECT_PALETTE } from '../../../shared/defaults'
+import { DEFAULT_NOTE_FOLDER_ID, PROJECT_PALETTE, localToday } from '../../../shared/defaults'
 import { collectFolderSubtree } from '../../../shared/notes'
 import { START_OF_TODAY } from '../utils/ui'
 
 const NAV: Array<{ kind: View['kind']; label: string; icon: typeof Sun }> = [
+  { kind: 'focus', label: '今日聚焦', icon: Sunrise },
   { kind: 'today', label: '今天', icon: Sun },
   { kind: 'upcoming', label: '即将到来', icon: CalendarDays },
   { kind: 'all', label: '全部', icon: Layers },
@@ -116,7 +118,9 @@ export default function Sidebar(): JSX.Element {
 
   const start = START_OF_TODAY()
   const active = db.tasks.filter(t => !t.done)
+  const focusToday = localToday()
   const counts: Record<string, number> = {
+    focus: active.filter(t => t.plannedDay === focusToday).length,
     today: active.filter(t => t.dueAt && new Date(t.dueAt).getTime() < start + 86400000).length,
     upcoming: active.filter(t => t.dueAt && new Date(t.dueAt).getTime() >= start + 86400000).length,
     all: active.length,
@@ -352,6 +356,7 @@ export default function Sidebar(): JSX.Element {
           return (
             <button
               key={kind}
+              data-nav={kind}
               onClick={() => setView({ kind })}
               className={`mb-0.5 flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-[13px] transition ${
                 isActive

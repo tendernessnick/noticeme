@@ -1,9 +1,10 @@
 import { Search } from 'lucide-react'
-import { DEFAULT_NOTE_FOLDER_ID } from '../../../shared/defaults'
+import { DEFAULT_NOTE_FOLDER_ID, localToday } from '../../../shared/defaults'
 import { useStore } from '../store'
 import { START_OF_TODAY } from '../utils/ui'
 
 const TITLES: Record<string, { title: string; sub?: string }> = {
+  focus: { title: '今日聚焦' },
   today: { title: '今天' },
   upcoming: { title: '即将到来' },
   all: { title: '全部任务' },
@@ -31,6 +32,8 @@ export default function TopBar(): JSX.Element {
   const activeCount = db.tasks.filter(t => !t.done).length
   const isJournal = view.kind === 'journal'
   const isNotes = view.kind === 'noteFolder'
+  const isFocus = view.kind === 'focus'
+  const focusCount = db.tasks.filter(t => !t.done && t.plannedDay === localToday()).length
   const noteCount = db.notes.filter(n => n.folderId === (view.folderId ?? DEFAULT_NOTE_FOLDER_ID)).length
 
   // 今日完成度（截止在今天及今天之前的任务）
@@ -47,9 +50,15 @@ export default function TopBar(): JSX.Element {
         <div className="mt-0.5 flex items-center gap-2">
           <p className="text-xs text-zinc-400">
             {dateLabel}
-            {isJournal ? ` · ${db.entries.length} 篇` : isNotes ? ` · ${noteCount} 条笔记` : ` · ${activeCount} 项待办`}
+            {isJournal
+              ? ` · ${db.entries.length} 篇`
+              : isNotes
+                ? ` · ${noteCount} 条笔记`
+                : isFocus
+                  ? ` · ${focusCount} 项计划`
+                  : ` · ${activeCount} 项待办`}
           </p>
-          {!isJournal && !isNotes && todays.length > 0 && (
+          {!isJournal && !isNotes && !isFocus && todays.length > 0 && (
             <span className="flex items-center gap-1.5" title={`今日完成 ${doneToday}/${todays.length}`}>
               <span className="h-1.5 w-16 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
                 <span
@@ -64,7 +73,7 @@ export default function TopBar(): JSX.Element {
           )}
         </div>
       </div>
-      {!isJournal && !isNotes && (
+      {!isJournal && !isNotes && !isFocus && (
         <div className="relative ml-auto w-60 shrink-0">
           <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
           <input

@@ -1,6 +1,7 @@
-import { CalendarClock, CheckCircle2, Repeat, BellRing, Pencil, Trash2, Sparkles, Flag } from 'lucide-react'
+import { CalendarClock, CalendarPlus, CheckCircle2, Repeat, BellRing, Pencil, Trash2, Sparkles, Flag, Sunrise } from 'lucide-react'
 import type { Task } from '../../../shared/types'
 import { formatDueLabel, formatReminderOffset, isDuePast } from '../../../shared/datetime'
+import { localToday } from '../../../shared/defaults'
 import { PRIORITY_COLORS } from '../utils/ui'
 import { useStore } from '../store'
 import { taskSections } from '../utils/views'
@@ -75,6 +76,7 @@ export default function TaskList(): JSX.Element {
 function TaskItem({ task, hideProject }: { task: Task; hideProject?: boolean }): JSX.Element {
   const setDone = useStore(s => s.setDone)
   const deleteTask = useStore(s => s.deleteTask)
+  const planTasksDay = useStore(s => s.planTasksDay)
   const selectTask = useStore(s => s.selectTask)
   const db = useStore(s => s.db)!
   const project = hideProject ? null : db.projects.find(p => p.id === (task.projectId ?? 'inbox'))
@@ -134,6 +136,12 @@ function TaskItem({ task, hideProject }: { task: Task; hideProject?: boolean }):
               {task.reminders.length}
             </span>
           )}
+          {task.plannedDay && !task.done && (
+            <span className="inline-flex items-center gap-1 font-medium text-accent" title="已列入今日聚焦计划">
+              <Sunrise size={11} />
+              今日聚焦
+            </span>
+          )}
           {task.repeat && <Repeat size={11} className="text-zinc-400" />}
           {task.tags.map(tg => (
             <span key={tg} className="rounded bg-zinc-100 px-1.5 py-[1px] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
@@ -151,6 +159,18 @@ function TaskItem({ task, hideProject }: { task: Task; hideProject?: boolean }):
 
       {/* 悬停操作 */}
       <div className="mt-0.5 flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+        {!task.done && task.plannedDay !== localToday() && (
+          <button
+            onClick={e => {
+              e.stopPropagation()
+              void planTasksDay([task.id], localToday())
+            }}
+            className="rounded-md p-1.5 text-zinc-400 hover:bg-accent/10 hover:text-accent"
+            title="加入今日聚焦"
+          >
+            <CalendarPlus size={13} />
+          </button>
+        )}
         <button
           onClick={e => {
             e.stopPropagation()

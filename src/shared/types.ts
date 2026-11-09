@@ -24,6 +24,8 @@ export interface Task {
   priority: Priority
   /** ISO 时间字符串；null = 无截止时间 */
   dueAt: string | null
+  /** 今日聚焦：计划处理日期 YYYY-MM-DD；null = 未列入任何一天的计划（与截止日无关的主动规划） */
+  plannedDay: string | null
   reminders: Reminder[]
   repeat: RepeatRule | null
   done: boolean

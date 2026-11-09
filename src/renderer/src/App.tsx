@@ -8,6 +8,7 @@ import TaskList from './components/TaskList'
 import TaskDetail from './components/TaskDetail'
 import JournalView from './components/JournalView'
 import NotesView from './components/NotesView'
+import FocusView from './components/FocusView'
 import SettingsModal from './components/SettingsModal'
 
 export default function App(): JSX.Element {
@@ -34,7 +35,12 @@ export default function App(): JSX.Element {
   return (
     <div className="flex h-screen overflow-hidden bg-zinc-50 font-sans text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
       <Sidebar />
-      {view.kind === 'journal' ? (
+      {view.kind === 'focus' ? (
+        <main className="flex min-w-0 flex-1 flex-col">
+          <TopBar />
+          <FocusView />
+        </main>
+      ) : view.kind === 'journal' ? (
         <main className="flex min-w-0 flex-1 flex-col">
           <TopBar />
           <JournalView />

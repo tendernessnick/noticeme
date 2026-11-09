@@ -70,6 +70,8 @@ describe('Store', () => {
     const store = new Store(dir)
     expect(store.get().entries).toHaveLength(0)
     expect(store.get().tasks.some(t => t.title === '旧任务')).toBe(true)
+    // 旧任务无 plannedDay → 迁移补 null（未列入今日聚焦计划）
+    expect(store.get().tasks.find(t => t.title === '旧任务')?.plannedDay).toBeNull()
 
     // 新格式：日记往返
     const dir2 = mkdtempSync(join(tmpdir(), 'noticeme-store-'))

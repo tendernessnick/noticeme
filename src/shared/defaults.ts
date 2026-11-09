@@ -59,6 +59,7 @@ export function newTask(partial: Partial<Task> = {}): Task {
     tags: [],
     priority: 3,
     dueAt: null,
+    plannedDay: null,
     reminders: [],
     repeat: null,
     done: false,
@@ -207,7 +208,10 @@ export function sanitizeDb(raw: unknown): Database | null {
     .map(n => (folderIds.has(n.folderId) ? n : { ...n, folderId: DEFAULT_NOTE_FOLDER_ID }))
   return {
     version: DATA_VERSION,
-    tasks: r.tasks.filter(t => t && typeof t.id === 'string' && typeof t.title === 'string'),
+    // 旧数据无 plannedDay → 默认未列入计划
+    tasks: r.tasks
+      .filter(t => t && typeof t.id === 'string' && typeof t.title === 'string')
+      .map(t => ({ ...t, plannedDay: (t as { plannedDay?: string | null }).plannedDay ?? null })),
     projects: r.projects.filter(p => p && typeof p.id === 'string' && typeof p.name === 'string'),
     snoozes: Array.isArray(r.snoozes) ? r.snoozes : [],
     // 0.1.x 旧数据没有 entries 字段 → 迁移为空数组

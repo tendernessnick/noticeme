@@ -8,8 +8,9 @@ import { utilityProcess } from '../electron-shims'
 import type { Settings } from '../../shared/types'
 import { AI_MODEL_FILE } from '../../shared/defaults'
 import type { AiStatus, TaskDraft } from '../../shared/ai-schema'
-import { validateDrafts } from '../../shared/ai-schema'
-import { buildExtractionPrompt, buildWeeklyReviewPrompt, type AiTaskKind, type ReviewInput } from '../../shared/ai-prompts'
+import { validateDrafts, validateSuggestions } from '../../shared/ai-schema'
+import type { FocusSuggestion } from '../../shared/ai-schema'
+import { buildExtractionPrompt, buildFocusSuggestPrompt, buildWeeklyReviewPrompt, type AiTaskKind, type FocusCandidate, type ReviewInput } from '../../shared/ai-prompts'
 import { ModelDownloader } from './download'
 import type { ProbeResult, WorkerRequest, WorkerResponse } from './types'
 
@@ -309,6 +310,32 @@ export class AiManager {
   async quickAddParse(text: string): Promise<{ draft: TaskDraft | null; ms: number }> {
     const { drafts, ms } = await this.extractDrafts('parse', text)
     return { draft: drafts[0] ?? null, ms }
+  }
+
+  /** 今日聚焦「AI 帮我排今天」：从候选任务中挑选建议（预览确认用，绝不自动改动任务） */
+  async focusSuggest(candidates: FocusCandidate[]): Promise<{ suggestions: FocusSuggestion[]; ms: number }> {
+    await this.ensureLoaded()
+    return this.enqueue(async () => {
+      const { system, user } = buildFocusSuggestPrompt({ candidates, now: new Date() })
+      this.busy = true
+      this.push()
+      try {
+        const res = await this.request({ type: 'infer', kind: 'suggest', system, user, maxTokens: 400 }, INFER_TIMEOUT_MS)
+        if (!res.ok) throw new Error(res.error)
+        if (res.type !== 'infer') throw new Error('意外的 worker 响应')
+        const suggestions = validateSuggestions(res.result, candidates.map(c => c.id))
+        return { suggestions, ms: res.ms }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        if (msg.includes('超时')) this.kill()
+        this.setLastError(msg)
+        throw e
+      } finally {
+        this.busy = false
+        this.scheduleIdleUnload()
+        this.push()
+      }
+    })
   }
 
   /** 周回顾：自由文本生成 */

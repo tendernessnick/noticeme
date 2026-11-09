@@ -13,7 +13,7 @@ import { AppUpdater } from './updater'
 import { showToast } from './notify'
 import { createTray, rebuild } from './tray'
 import { applyShortcuts } from './shortcuts'
-import { defaultSettings, newTask, DEFAULT_NOTE_FOLDER_ID } from '../shared/defaults'
+import { defaultSettings, newTask, DEFAULT_NOTE_FOLDER_ID, localToday } from '../shared/defaults'
 import { collectFolderSubtree } from '../shared/notes'
 import type { Note, NoteFolder, UpdaterState } from '../shared/types'
 import { nextOccurrence } from '../shared/recurrence'
@@ -282,6 +282,15 @@ function registerIpc(): void {
     setDoneInternal(p.id, p.done)
   })
 
+  // 今日聚焦：批量设置计划日期（day=null 移出计划）
+  ipcMain.handle('task:planDay', (_e, p: { ids: string[]; day: string | null }) => {
+    store.mutate(db => {
+      const set = new Set(p.ids)
+      for (const t of db.tasks) if (set.has(t.id)) t.plannedDay = p.day
+    })
+    broadcastDb()
+  })
+
   ipcMain.handle('project:add', (_e, p: { name: string; color: string }): string => {
     let id = ''
     store.mutate(db => {
@@ -465,6 +474,7 @@ function registerIpc(): void {
   ipcMain.handle('ai:parse', (_e, text: string) => ai.quickAddParse(String(text ?? '')))
   ipcMain.handle('ai:extractMany', (_e, text: string) => ai.extractDrafts('parseMany', String(text ?? '')))
   ipcMain.handle('ai:journalTodos', (_e, content: string) => ai.extractDrafts('journalTodos', String(content ?? '')))
+  ipcMain.handle('ai:focusSuggest', (_e, candidates) => ai.focusSuggest(Array.isArray(candidates) ? candidates : []))
   ipcMain.handle('ai:weeklyReview', (_e, payload) => ai.weeklyReview(payload))
   ipcMain.handle('ai:test', (_e, text?: string) => ai.test(text))
 
@@ -573,6 +583,28 @@ async function runSmoke(): Promise<void> {
   )
   await sleep(800)
   await capture(win, join(outDir, 'notes-editor.png'))
+
+  // 今日聚焦验收：注入今日计划 + 逾期任务，切到聚焦视图截图（仅冒烟钩子）
+  store.mutate(db => {
+    const today = localToday()
+    db.tasks.push(
+      (() => {
+        const t = newTask({ title: '写晨会纪要', priority: 2, dueAt: new Date(now.getTime() + 3600_000).toISOString(), projectId: 'inbox' })
+        t.plannedDay = today
+        return t
+      })(),
+      (() => {
+        const t = newTask({ title: '回复合作方邮件', priority: 1, dueAt: new Date(now.getTime() - 86400000).toISOString(), projectId: 'inbox' })
+        t.plannedDay = null
+        return t
+      })()
+    )
+  })
+  scheduler.wake()
+  await sleep(500)
+  await win?.webContents.executeJavaScript(`document.querySelector('[data-nav="focus"]')?.click()`)
+  await sleep(700)
+  await capture(win, join(outDir, 'focus-view.png'))
 
   log(`smoke done ${JSON.stringify(alerts.debugState())}`)
   app.exit(0)

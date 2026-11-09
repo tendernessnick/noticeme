@@ -2,7 +2,7 @@
 // node-llama-cpp 是含顶层 await 的纯 ESM 包——必须用真正的动态 import() 加载
 // （rollup 输出经 renderDynamicImport 保留 import() 形态，见 electron.vite.config.ts）
 import type { Llama, LlamaContext, LlamaJsonSchemaGrammar, LlamaModel } from 'node-llama-cpp'
-import { TASK_DRAFTS_SCHEMA } from '../../shared/ai-schema'
+import { TASK_DRAFTS_SCHEMA, TASK_SUGGESTIONS_SCHEMA } from '../../shared/ai-schema'
 import type { WorkerRequest, WorkerResponse, WorkerProgress, ProbeResult } from './types'
 
 // utilityProcess 子进程通信端口（Electron 注入到 process 上，此处本地最小类型声明）
@@ -19,6 +19,7 @@ let llama: Llama | null = null
 let model: LlamaModel | null = null
 let context: LlamaContext | null = null
 let grammar: LlamaJsonSchemaGrammar<typeof TASK_DRAFTS_SCHEMA> | null = null
+let suggestGrammar: LlamaJsonSchemaGrammar<typeof TASK_SUGGESTIONS_SCHEMA> | null = null
 /** 当前 llama 实例的实际后端（请求 GPU 但失败时为 false） */
 let gpuUsed = false
 const aborts = new Map<number, AbortController>()
@@ -46,6 +47,7 @@ async function doLoad(modelPath: string, gpu: boolean): Promise<void> {
   model ??= await llama.loadModel({ modelPath })
   context ??= await model.createContext({ contextSize: 4096, sequences: 1 })
   grammar ??= await llama.createGrammarForJsonSchema(TASK_DRAFTS_SCHEMA)
+  suggestGrammar ??= await llama.createGrammarForJsonSchema(TASK_SUGGESTIONS_SCHEMA)
 }
 
 function disposeAll(): void {
@@ -60,6 +62,7 @@ function disposeAll(): void {
   context = null
   model = null
   grammar = null
+  suggestGrammar = null
   // llama 实例持有原生资源，随进程退出整体释放即可
 }
 
@@ -106,7 +109,7 @@ async function handle(req: WorkerRequest): Promise<void> {
         const session = new nlc!.LlamaChatSession({ contextSequence: seq, systemPrompt: req.system })
         try {
           const text = await session.prompt(req.user, {
-            grammar: req.kind === 'drafts' ? (grammar as never) : undefined,
+            grammar: req.kind === 'drafts' ? (grammar as never) : req.kind === 'suggest' ? (suggestGrammar as never) : undefined,
             maxTokens: req.maxTokens,
             temperature: 0.15,
             signal: ctrl.signal,

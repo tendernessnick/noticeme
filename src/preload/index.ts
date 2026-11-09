@@ -1,8 +1,8 @@
 // 预加载脚本：contextBridge 暴露类型安全 API
 import { contextBridge, ipcRenderer } from 'electron'
 import type { Database, JournalEntry, Note, NoteFolder, Project, Settings, Task, UpdaterState } from '../shared/types'
-import type { AiStatus, TaskDraft } from '../shared/ai-schema'
-import type { ReviewInput } from '../shared/ai-prompts'
+import type { AiStatus, FocusSuggestion, TaskDraft } from '../shared/ai-schema'
+import type { FocusCandidate, ReviewInput } from '../shared/ai-prompts'
 
 export interface AlertActionPayload {
   type: 'complete' | 'snooze' | 'open' | 'dismiss'
@@ -31,12 +31,19 @@ export interface AiTestResult {
   ms: number
 }
 
+export interface AiFocusSuggestResult {
+  suggestions: FocusSuggestion[]
+  ms: number
+}
+
 const api = {
   getDb: (): Promise<Database> => ipcRenderer.invoke('db:get'),
   upsertTask: (task: Task): Promise<void> => ipcRenderer.invoke('task:upsert', task),
   deleteTask: (id: string): Promise<void> => ipcRenderer.invoke('task:delete', id),
   setTaskDone: (id: string, done: boolean): Promise<void> =>
     ipcRenderer.invoke('task:setDone', { id, done }),
+  planTasksDay: (ids: string[], day: string | null): Promise<void> =>
+    ipcRenderer.invoke('task:planDay', { ids, day }),
   upsertJournal: (entry: JournalEntry): Promise<void> => ipcRenderer.invoke('journal:upsert', entry),
   deleteJournal: (id: string): Promise<void> => ipcRenderer.invoke('journal:delete', id),
   upsertNote: (note: Note): Promise<void> => ipcRenderer.invoke('note:upsert', note),
@@ -63,6 +70,8 @@ const api = {
   aiParse: (text: string): Promise<AiParseResult> => ipcRenderer.invoke('ai:parse', text),
   aiExtractMany: (text: string): Promise<AiDraftsResult> => ipcRenderer.invoke('ai:extractMany', text),
   aiJournalTodos: (content: string): Promise<AiDraftsResult> => ipcRenderer.invoke('ai:journalTodos', content),
+  aiFocusSuggest: (candidates: FocusCandidate[]): Promise<AiFocusSuggestResult> =>
+    ipcRenderer.invoke('ai:focusSuggest', candidates),
   aiWeeklyReview: (payload: ReviewInput): Promise<AiReviewResult> => ipcRenderer.invoke('ai:weeklyReview', payload),
   aiTest: (text?: string): Promise<AiTestResult> => ipcRenderer.invoke('ai:test', text),
   // ---------- 自动更新 ----------

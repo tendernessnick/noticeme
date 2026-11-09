@@ -8,8 +8,8 @@ export type WorkerRequest =
   | {
       id: number
       type: 'infer'
-      /** 'drafts' = grammar 约束输出任务 JSON；'review' = 自由文本 */
-      kind: 'drafts' | 'review'
+      /** 'drafts' = grammar 约束输出任务 JSON；'suggest' = grammar 约束输出今日聚焦建议；'review' = 自由文本 */
+      kind: 'drafts' | 'suggest' | 'review'
       system: string
       user: string
       maxTokens: number

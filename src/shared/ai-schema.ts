@@ -69,6 +69,31 @@ export const TASK_DRAFTS_SCHEMA = {
   required: ['tasks']
 } as const
 
+/** 今日聚焦建议（AI 从既有任务中挑选今天该做的；仅供预览确认，绝不自动改动任务） */
+export interface FocusSuggestion {
+  taskId: string
+  reason: string
+}
+
+/** 「挑任务」比「抽字段」简单得多：只输出被选中的 id + 短理由，不含 exclude（未列出 = 不建议） */
+export const TASK_SUGGESTIONS_SCHEMA = {
+  type: 'object',
+  properties: {
+    picks: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          reason: { type: 'string' }
+        },
+        required: ['id', 'reason']
+      }
+    }
+  },
+  required: ['picks']
+} as const
+
 const ISO_LIKE_RE = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?)?$/
 const MAX_DRAFTS = 8
 const MAX_TAG_LEN = 20
@@ -177,4 +202,47 @@ export function mergeQuickAdd(regex: ParsedQuickAdd, ai: TaskDraft): ParsedQuick
     tags,
     projectName: regex.projectName ?? ai.projectName
   }
+}
+
+const MAX_SUGGESTIONS = 8
+const MAX_REASON_LEN = 40
+
+/** 解析模型 JSON（宽松截取最外层花括号），与 validateDrafts 同款容错 */
+function parseModelJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw.trim())
+  } catch {
+    const l = raw.indexOf('{')
+    const r = raw.lastIndexOf('}')
+    if (l < 0 || r <= l) return null
+    try {
+      return JSON.parse(raw.slice(l, r + 1))
+    } catch {
+      return null
+    }
+  }
+}
+
+/**
+ * 校验/修复今日聚焦建议：id 必须在候选集内（兜住模型幻觉的编造 id），
+ * 去重、截断理由、限制条数。全部无效返回空数组——调用方显示「没有建议」。
+ */
+export function validateSuggestions(raw: string, allowedIds: string[]): FocusSuggestion[] {
+  const data = parseModelJson(raw)
+  const items = (data as { picks?: unknown })?.picks
+  if (!Array.isArray(items)) return []
+  const allowed = new Set(allowedIds)
+  const out: FocusSuggestion[] = []
+  const seen = new Set<string>()
+  for (const it of items) {
+    if (!it || typeof it !== 'object') continue
+    const o = it as Record<string, unknown>
+    const id = typeof o.id === 'string' ? o.id.trim() : ''
+    if (!id || !allowed.has(id) || seen.has(id)) continue
+    seen.add(id)
+    const reason = typeof o.reason === 'string' ? o.reason.trim().slice(0, MAX_REASON_LEN) : ''
+    out.push({ taskId: id, reason })
+    if (out.length >= MAX_SUGGESTIONS) break
+  }
+  return out
 }
