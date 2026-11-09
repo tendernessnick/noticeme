@@ -23,7 +23,7 @@
     "ai:probe": "npm run build && node scripts/ai-smoke.mjs",
     "dist": "electron-vite build && electron-builder --win --publish never",
     "dist:mac": "electron-vite build && electron-builder --mac --publish never",
-    "clean:dist": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "clean:dist": "node -e \"const fs=require('fs');if(fs.existsSync('dist'))for(const f of fs.readdirSync('dist'))fs.rmSync('dist/'+f,{recursive:true,force:true})\"",
     "release": "npm run clean:dist && npm run typecheck && npm run test && npm run dist && gh release create v%npm_package_version% \"dist/NoticeMe-Setup-%npm_package_version%.exe\" \"dist/NoticeMe-Portable-%npm_package_version%.exe\" \"dist/NoticeMe-Setup-%npm_package_version%.exe.blockmap\" \"dist/latest.yml\" --title \"NoticeMe v%npm_package_version%\" --generate-notes"
   },
   "dependencies": {
