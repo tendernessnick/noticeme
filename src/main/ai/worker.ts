@@ -69,7 +69,10 @@ async function handle(req: WorkerRequest): Promise<void> {
     if (req.type === 'probe') {
       const m = await loadRuntime()
       const initStart = Date.now()
-      const inst = llama ?? (await m.getLlama({ gpu: false, logLevel: m.LlamaLogLevel.error }))
+      // 必须用 'auto' 而非固定 false：probe 先于 load 执行，false 会把 llama 实例
+      // 初始化成 CPU 后端，后续 load 请求的 gpu:'vulkan' 被 `llama ??=` 短路，
+      // GPU 预检永远报「未检测到设备」（2026-11-08 修 Vulkan 驱动时实测踩坑）
+      const inst = llama ?? (await m.getLlama({ gpu: 'auto', logLevel: m.LlamaLogLevel.error }))
       llama ??= inst
       gpuUsed = false
       const result: ProbeResult = { initMs: Date.now() - initStart, loadMs: null, ctxMs: null }
