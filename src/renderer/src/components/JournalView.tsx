@@ -258,7 +258,7 @@ export default function JournalView(): JSX.Element {
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="搜索日记…"
+              placeholder="搜索随心记…"
               className="input !py-1.5 pl-8 text-[13px]"
             />
           </div>
@@ -269,7 +269,7 @@ export default function JournalView(): JSX.Element {
           >
             <Sparkles size={14} />
           </button>
-          <button onClick={() => void createEntry()} className="btn-primary !px-2.5 !py-1.5" title="新建日记">
+          <button onClick={() => void createEntry()} className="btn-primary !px-2.5 !py-1.5" title="新建随心记">
             <Plus size={14} />
           </button>
         </div>
@@ -278,7 +278,7 @@ export default function JournalView(): JSX.Element {
             <div className="flex flex-col items-center justify-center py-16 text-center animate-fadeIn">
               <BookOpen size={30} className="mb-2.5 text-zinc-300 dark:text-zinc-700" />
               <p className="text-[13px] text-zinc-400">
-                {search.trim() ? '没有匹配的日记' : '还没有日记，点右上角 + 开始记录'}
+                {search.trim() ? '没有匹配的随心记' : '还没有随心记，点右上角 + 开始记录'}
               </p>
             </div>
           )}
@@ -359,7 +359,7 @@ export default function JournalView(): JSX.Element {
                     ? 'text-accent'
                     : 'text-zinc-400 hover:bg-accent/10 hover:text-accent disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-zinc-400'
                 }`}
-                title={!aiReady ? '需在设置中启用本地 AI 并下载模型' : '从这篇日记提取待办（本地 AI）'}
+                title={!aiReady ? '需在设置中启用本地 AI 并下载模型' : '从这篇随心记提取待办（本地 AI）'}
               >
                 {todoSuggest.phase === 'running' ? <Loader2 size={13} className="animate-spin" /> : <ListTodo size={13} />}
                 {todoSuggest.phase === 'running' ? `生成中 ${todoProgress.elapsed}s` : '提取待办'}
@@ -394,7 +394,7 @@ export default function JournalView(): JSX.Element {
                 <button
                   onClick={startConfirmDelete}
                   className="btn !px-2 !py-1 text-xs text-zinc-400 hover:bg-red-500/10 hover:text-red-500"
-                  title="删除日记"
+                  title="删除随心记"
                 >
                   <Trash2 size={13} /> 删除
                 </button>
@@ -441,7 +441,7 @@ export default function JournalView(): JSX.Element {
               <div className="mb-1.5 flex items-center justify-between px-0.5">
                 <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
                   <ListTodo size={12} />
-                  {todoSuggest.drafts.length > 0 ? `提取到 ${todoSuggest.drafts.length} 条待办` : '这篇日记里没有明确的待办'}
+                  {todoSuggest.drafts.length > 0 ? `提取到 ${todoSuggest.drafts.length} 条待办` : '这篇随心记里没有明确的待办'}
                 </span>
                 <button onClick={() => setTodoSuggest({ phase: 'idle', drafts: [], added: [], error: '' })} className="text-zinc-400 hover:text-accent">
                   <X size={12} />
@@ -492,7 +492,7 @@ export default function JournalView(): JSX.Element {
           <div className="mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-accent/10 text-accent">
             <Pencil size={28} />
           </div>
-          <h2 className="text-lg font-semibold">随手记，别让想法溜走</h2>
+          <h2 className="text-lg font-semibold">随心而记，别让想法溜走</h2>
           <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-zinc-400">
             记录今天的想法与心情，或者写下接下来的规划。
             <br />
@@ -527,7 +527,7 @@ export default function JournalView(): JSX.Element {
               <div className="flex flex-col items-center gap-3 py-12 text-center">
                 <Loader2 size={22} className="animate-spin text-accent" />
                 <p className="text-[13px] text-zinc-400">
-                  本地 AI 正在阅读你这一周的日记与任务…
+                  本地 AI 正在阅读你这一周的随心记与任务…
                   <br />
                   <span className="text-[11px] text-zinc-400/80">
                     已 {reviewProgress.elapsed}s{reviewProgress.chars > 0 ? ` · 已生成 ${reviewProgress.chars} 字` : ''}（推理时长取决于机器负载，通常 10~60 秒，请稍候）
@@ -557,7 +557,7 @@ export default function JournalView(): JSX.Element {
                       disabled={review.saved}
                       className="btn-primary !px-3 !py-1 text-xs disabled:opacity-50"
                     >
-                      {review.saved ? '已存入日记' : '存为日记'}
+                      {review.saved ? '已存入随心记' : '存为随心记'}
                     </button>
                   </div>
                 </div>

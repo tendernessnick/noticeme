@@ -65,6 +65,29 @@ export interface JournalEntry {
   updatedAt: string
 }
 
+/** 笔记文件夹（支持嵌套：parentId = null 为根级） */
+export interface NoteFolder {
+  id: string
+  name: string
+  color: string
+  /** 父文件夹 id；null = 根级 */
+  parentId: string | null
+  createdAt: string
+}
+
+/** 笔记：归属某个文件夹（folderId 必有） */
+export interface Note {
+  id: string
+  title: string
+  content: string
+  folderId: string
+  tags: string[]
+  /** 置顶（列表顶部常驻） */
+  pinned: boolean
+  createdAt: string
+  updatedAt: string
+}
+
 export type ThemeMode = 'system' | 'light' | 'dark'
 
 /** 提醒方式：card=置顶弹窗卡片（默认） toast=Windows 系统通知 both=两者同时 */
@@ -104,8 +127,12 @@ export interface Database {
   tasks: Task[]
   projects: Project[]
   snoozes: Snooze[]
-  /** 日记/随笔 */
+  /** 日记/随笔（随心记） */
   entries: JournalEntry[]
+  /** 笔记 */
+  notes: Note[]
+  /** 笔记文件夹 */
+  noteFolders: NoteFolder[]
   settings: Settings
   /** 已触发提醒防重键：taskId:reminderId:dueAtISO */
   firedKeys: string[]

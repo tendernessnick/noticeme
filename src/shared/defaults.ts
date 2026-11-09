@@ -1,9 +1,12 @@
 // 默认数据与工厂函数（纯函数，供主进程 / 渲染端 / 测试共用，禁止 Node 专属依赖）
-import type { Database, JournalEntry, Project, Settings, Task } from './types'
+import type { Database, JournalEntry, Note, NoteFolder, Project, Settings, Task } from './types'
 import { INBOX_PROJECT_ID } from './types'
 import { addDays, startOfDay } from './datetime'
 
 export const DATA_VERSION = 1
+
+/** 内置默认笔记文件夹（不可删除，同收集箱语义：删文件夹后笔记移入此处） */
+export const DEFAULT_NOTE_FOLDER_ID = 'notes-default'
 
 /** 内置本地模型：Qwen2.5-1.5B-Instruct（Q4_K_M GGUF，约 1 GB），设置页按需下载 */
 export const AI_MODEL_FILE = 'qwen2.5-1.5b-instruct-q4_k_m.gguf'
@@ -91,6 +94,44 @@ export function newJournalEntry(partial: Partial<JournalEntry> = {}): JournalEnt
   }
 }
 
+/** 默认笔记文件夹（预置 + 旧数据迁移共用） */
+export function defaultNoteFolder(): NoteFolder {
+  return {
+    id: DEFAULT_NOTE_FOLDER_ID,
+    name: '默认',
+    color: '#64748b',
+    parentId: null,
+    createdAt: new Date().toISOString()
+  }
+}
+
+export function newNoteFolder(partial: Partial<NoteFolder> = {}): NoteFolder {
+  const now = new Date().toISOString()
+  return {
+    id: uid(),
+    name: '',
+    color: '#64748b',
+    parentId: null,
+    createdAt: now,
+    ...partial
+  }
+}
+
+export function newNote(partial: Partial<Note> = {}): Note {
+  const now = new Date().toISOString()
+  return {
+    id: uid(),
+    title: '',
+    content: '',
+    folderId: DEFAULT_NOTE_FOLDER_ID,
+    tags: [],
+    pinned: false,
+    createdAt: now,
+    updatedAt: now,
+    ...partial
+  }
+}
+
 export function createDefaultDb(): Database {
   const inbox: Project = {
     id: INBOX_PROJECT_ID,
@@ -104,7 +145,7 @@ export function createDefaultDb(): Database {
     return d.toISOString()
   })()
   const welcomeEntry = newJournalEntry({
-    title: '欢迎使用日记板块 ✨',
+    title: '欢迎使用随心记板块 ✨',
     content: '这里可以随便记——\n\n· 今天的想法和心情\n· 灵感与碎片信息\n· 接下来的规划\n\n右上角可标记心情与置顶，左侧按月份归档。',
     mood: '😊',
     tags: ['指南'],
@@ -125,10 +166,12 @@ export function createDefaultDb(): Database {
     projects: [inbox],
     snoozes: [],
     entries: [welcomeEntry],
+    notes: [],
+    noteFolders: [defaultNoteFolder()],
     settings: defaultSettings(),
     firedKeys: [],
     updatedAt: new Date().toISOString()
-  }
+  } as Database
 }
 
 /** 校验导入/读取的数据形状（宽松校验，缺省字段用默认值补齐，含旧版本字段迁移） */
@@ -149,6 +192,19 @@ export function sanitizeDb(raw: unknown): Database | null {
     else settings.notifyMode = 'card'
   }
   const rawEntries = (r as { entries?: unknown }).entries
+  // 笔记模块迁移：旧数据无 notes/noteFolders → 空数组 + 补默认文件夹；
+  // folderId 失效的笔记移入默认文件夹；parentId 失效的文件夹提升为根级
+  const rawNotes = (r as { notes?: unknown }).notes as Note[] | undefined
+  const rawFolders = (r as { noteFolders?: unknown }).noteFolders as NoteFolder[] | undefined
+  let noteFolders = Array.isArray(rawFolders)
+    ? rawFolders.filter(f => f && typeof f.id === 'string' && typeof f.name === 'string')
+    : []
+  if (!noteFolders.some(f => f.id === DEFAULT_NOTE_FOLDER_ID)) noteFolders.push(defaultNoteFolder())
+  const folderIds = new Set(noteFolders.map(f => f.id))
+  noteFolders = noteFolders.map(f => (f.parentId && folderIds.has(f.parentId) ? f : { ...f, parentId: null }))
+  const notes = (Array.isArray(rawNotes) ? rawNotes : [])
+    .filter(n => n && typeof n.id === 'string' && typeof n.content === 'string')
+    .map(n => (folderIds.has(n.folderId) ? n : { ...n, folderId: DEFAULT_NOTE_FOLDER_ID }))
   return {
     version: DATA_VERSION,
     tasks: r.tasks.filter(t => t && typeof t.id === 'string' && typeof t.title === 'string'),
@@ -158,6 +214,8 @@ export function sanitizeDb(raw: unknown): Database | null {
     entries: Array.isArray(rawEntries)
       ? (rawEntries as JournalEntry[]).filter(e => e && typeof e.id === 'string' && typeof e.content === 'string')
       : [],
+    notes,
+    noteFolders,
     settings,
     firedKeys: Array.isArray(r.firedKeys) ? r.firedKeys : [],
     updatedAt: new Date().toISOString()

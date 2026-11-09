@@ -13,8 +13,8 @@ import { AppUpdater } from './updater'
 import { showToast } from './notify'
 import { createTray, rebuild } from './tray'
 import { applyShortcuts } from './shortcuts'
-import { defaultSettings, newTask } from '../shared/defaults'
-import type { UpdaterState } from '../shared/types'
+import { defaultSettings, newTask, DEFAULT_NOTE_FOLDER_ID } from '../shared/defaults'
+import type { Note, NoteFolder, UpdaterState } from '../shared/types'
 import { nextOccurrence } from '../shared/recurrence'
 import type { AlertEntry, JournalEntry, Project, Settings, Task, UiEvent } from '../shared/types'
 import type { TrayDeps } from './tray-deps'
@@ -371,6 +371,64 @@ function registerIpc(): void {
     broadcastDb()
   })
 
+  // ---------- 笔记 ----------
+  ipcMain.handle('note:upsert', (_e, note: Note) => {
+    const nowIso = new Date().toISOString()
+    store.mutate(db => {
+      // folderId 失效时兜底移入默认文件夹
+      const folderId = db.noteFolders.some(f => f.id === note.folderId) ? note.folderId : DEFAULT_NOTE_FOLDER_ID
+      const next = { ...note, folderId }
+      const idx = db.notes.findIndex(n => n.id === note.id)
+      if (idx >= 0) db.notes[idx] = { ...next, updatedAt: nowIso }
+      else db.notes.push({ ...next, createdAt: note.createdAt || nowIso, updatedAt: nowIso })
+    })
+    broadcastDb()
+  })
+
+  ipcMain.handle('note:delete', (_e, id: string) => {
+    store.mutate(db => {
+      db.notes = db.notes.filter(n => n.id !== id)
+    })
+    broadcastDb()
+  })
+
+  ipcMain.handle('noteFolder:add', (_e, p: { name: string; color: string; parentId: string | null }): string => {
+    let id = ''
+    store.mutate(db => {
+      const parentId = p.parentId && db.noteFolders.some(f => f.id === p.parentId) ? p.parentId : null
+      const folder: NoteFolder = {
+        id: randomUUID(),
+        name: p.name.trim().slice(0, 30) || '新文件夹',
+        color: p.color,
+        parentId,
+        createdAt: new Date().toISOString()
+      }
+      db.noteFolders.push(folder)
+      id = folder.id
+    })
+    broadcastDb()
+    return id
+  })
+
+  ipcMain.handle('noteFolder:update', (_e, folder: NoteFolder) => {
+    store.mutate(db => {
+      const i = db.noteFolders.findIndex(f => f.id === folder.id)
+      if (i >= 0) db.noteFolders[i] = folder
+    })
+    broadcastDb()
+  })
+
+  ipcMain.handle('noteFolder:delete', (_e, id: string) => {
+    store.mutate(db => {
+      if (id === DEFAULT_NOTE_FOLDER_ID) return // 默认文件夹不可删
+      // 子文件夹提升为根级，直属笔记移入默认文件夹
+      db.noteFolders = db.noteFolders.map(f => (f.parentId === id ? { ...f, parentId: null } : f))
+      db.noteFolders = db.noteFolders.filter(f => f.id !== id)
+      for (const n of db.notes) if (n.folderId === id) n.folderId = DEFAULT_NOTE_FOLDER_ID
+    })
+    broadcastDb()
+  })
+
   ipcMain.handle('data:info', () => ({ dir: app.getPath('userData') }))
 
   ipcMain.handle('assets:chime', () => {
@@ -478,6 +536,42 @@ async function runSmoke(): Promise<void> {
   })
   await sleep(800)
   await capture(win, join(outDir, 'main-dark.png'))
+
+  // 笔记模块验收：注入文件夹树与笔记，切到笔记视图截图（仅冒烟钩子，不进产品路径）
+  store.mutate(db => {
+    db.settings.theme = 'system'
+    db.noteFolders.push(
+      { id: 'smoke-folder-work', name: '工作', color: '#0ea5e9', parentId: null, createdAt: new Date().toISOString() },
+      { id: 'smoke-folder-meet', name: '会议', color: '#10b981', parentId: 'smoke-folder-work', createdAt: new Date().toISOString() }
+    )
+    const mkNote = (title: string, content: string, fid: string, pinned = false): Note => ({
+      id: randomUUID(),
+      title,
+      content,
+      folderId: fid,
+      tags: [],
+      pinned,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    })
+    db.notes.push(
+      mkNote('季度 OKR 草稿', 'Q4 目标：\n- 提醒到达率 99%\n- 笔记模块上线', 'smoke-folder-work', true),
+      mkNote('评审待办', '把验收结论同步给测试组', 'smoke-folder-meet')
+    )
+  })
+  scheduler.wake()
+  await sleep(600)
+  await win?.webContents.executeJavaScript(
+    `document.querySelector('[data-folder-id="smoke-folder-work"]')?.click()`
+  )
+  await sleep(800)
+  await capture(win, join(outDir, 'notes-view.png'))
+  // 点开第一篇笔记，验收编辑器（含文件夹下拉）
+  await win?.webContents.executeJavaScript(
+    `document.querySelector('aside .cursor-pointer.rounded-xl.border')?.click()`
+  )
+  await sleep(800)
+  await capture(win, join(outDir, 'notes-editor.png'))
 
   log(`smoke done ${JSON.stringify(alerts.debugState())}`)
   app.exit(0)

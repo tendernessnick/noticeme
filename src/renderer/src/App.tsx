@@ -7,6 +7,7 @@ import QuickAdd from './components/QuickAdd'
 import TaskList from './components/TaskList'
 import TaskDetail from './components/TaskDetail'
 import JournalView from './components/JournalView'
+import NotesView from './components/NotesView'
 import SettingsModal from './components/SettingsModal'
 
 export default function App(): JSX.Element {
@@ -37,6 +38,11 @@ export default function App(): JSX.Element {
         <main className="flex min-w-0 flex-1 flex-col">
           <TopBar />
           <JournalView />
+        </main>
+      ) : view.kind === 'noteFolder' ? (
+        <main className="flex min-w-0 flex-1 flex-col">
+          <TopBar />
+          <NotesView />
         </main>
       ) : (
         <main className="flex min-w-0 flex-1 flex-col">

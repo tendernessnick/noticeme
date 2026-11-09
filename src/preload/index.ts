@@ -1,6 +1,6 @@
 // 预加载脚本：contextBridge 暴露类型安全 API
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Database, JournalEntry, Project, Settings, Task, UpdaterState } from '../shared/types'
+import type { Database, JournalEntry, Note, NoteFolder, Project, Settings, Task, UpdaterState } from '../shared/types'
 import type { AiStatus, TaskDraft } from '../shared/ai-schema'
 import type { ReviewInput } from '../shared/ai-prompts'
 
@@ -39,6 +39,12 @@ const api = {
     ipcRenderer.invoke('task:setDone', { id, done }),
   upsertJournal: (entry: JournalEntry): Promise<void> => ipcRenderer.invoke('journal:upsert', entry),
   deleteJournal: (id: string): Promise<void> => ipcRenderer.invoke('journal:delete', id),
+  upsertNote: (note: Note): Promise<void> => ipcRenderer.invoke('note:upsert', note),
+  deleteNote: (id: string): Promise<void> => ipcRenderer.invoke('note:delete', id),
+  addNoteFolder: (name: string, color: string, parentId: string | null): Promise<string> =>
+    ipcRenderer.invoke('noteFolder:add', { name, color, parentId }),
+  updateNoteFolder: (folder: NoteFolder): Promise<void> => ipcRenderer.invoke('noteFolder:update', folder),
+  deleteNoteFolder: (id: string): Promise<void> => ipcRenderer.invoke('noteFolder:delete', id),
   addProject: (name: string, color: string): Promise<string> =>
     ipcRenderer.invoke('project:add', { name, color }),
   updateProject: (p: Project): Promise<void> => ipcRenderer.invoke('project:update', p),

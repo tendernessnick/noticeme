@@ -1,5 +1,5 @@
 // 渲染端 window.noticeme 类型声明
-import type { Database, JournalEntry, Project, Settings, Task, UiEvent, AlertEntry, UpdaterState } from '../shared/types'
+import type { Database, JournalEntry, Note, NoteFolder, Project, Settings, Task, UiEvent, AlertEntry, UpdaterState } from '../shared/types'
 import type { AiStatus, TaskDraft } from '../shared/ai-schema'
 import type { ReviewInput } from '../shared/ai-prompts'
 import type { AiParseResult, AiDraftsResult, AiReviewResult, AiTestResult } from './index'
@@ -17,6 +17,11 @@ export interface NoticeMeApi {
   setTaskDone(id: string, done: boolean): Promise<void>
   upsertJournal(entry: JournalEntry): Promise<void>
   deleteJournal(id: string): Promise<void>
+  upsertNote(note: Note): Promise<void>
+  deleteNote(id: string): Promise<void>
+  addNoteFolder(name: string, color: string, parentId: string | null): Promise<string>
+  updateNoteFolder(folder: NoteFolder): Promise<void>
+  deleteNoteFolder(id: string): Promise<void>
   addProject(name: string, color: string): Promise<string>
   updateProject(p: Project): Promise<void>
   deleteProject(id: string): Promise<void>

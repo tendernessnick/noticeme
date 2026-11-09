@@ -2,5 +2,6 @@ node_modules/
 out/
 dist/
 smoke-out/
+.zcode/
 *.log
 .DS_Store

@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, writeFileSync, existsSync, readdirSync } fro
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Store } from '../src/main/store'
-import { newTask } from '../src/shared/defaults'
+import { DEFAULT_NOTE_FOLDER_ID, newNote, newTask } from '../src/shared/defaults'
 
 let dir: string
 
@@ -13,15 +13,46 @@ beforeEach(() => {
 })
 
 describe('Store', () => {
-  it('首次初始化 → 默认数据（收集箱 + 欢迎任务 + 欢迎日记 + 默认设置）', () => {
+  it('首次初始化 → 默认数据（收集箱 + 欢迎任务 + 欢迎日记 + 默认笔记文件夹 + 默认设置）', () => {
     const store = new Store(dir)
     const db = store.get()
     expect(db.projects.some(p => p.id === 'inbox')).toBe(true)
     expect(db.tasks).toHaveLength(1)
     expect(db.entries).toHaveLength(1)
     expect(db.entries[0].date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(db.noteFolders.some(f => f.id === DEFAULT_NOTE_FOLDER_ID)).toBe(true)
+    expect(db.notes).toHaveLength(0)
     expect(db.settings.notifyMode).toBe('card')
     expect(db.settings.snoozePresets).toContain(10)
+  })
+
+  it('笔记模块迁移：旧数据无 notes/noteFolders → 补默认文件夹与空数组；folderId 失效的笔记归入默认', () => {
+    // 0.4.x 旧格式：没有 notes / noteFolders 字段
+    writeFileSync(
+      join(dir, 'data.json'),
+      JSON.stringify({
+        version: 1,
+        tasks: [{ id: 't1', title: '旧任务' }],
+        projects: [{ id: 'inbox', name: '收集箱', color: '#6366f1', createdAt: '2026-01-01T00:00:00.000Z' }],
+        settings: { notifyMode: 'card' }
+      }),
+      'utf-8'
+    )
+    const store = new Store(dir)
+    const db = store.get()
+    expect(db.noteFolders.some(f => f.id === DEFAULT_NOTE_FOLDER_ID)).toBe(true)
+    expect(db.notes).toHaveLength(0)
+
+    // 有笔记但 folderId 指向不存在的文件夹 → 迁移时移入默认文件夹
+    const dir2 = mkdtempSync(join(tmpdir(), 'noticeme-store-'))
+    const store2 = new Store(dir2)
+    store2.mutate(d => {
+      d.notes.push(newNote({ id: 'n1', title: '会议记录', content: '正文', folderId: 'ghost-folder' }))
+    })
+    const store3 = new Store(dir2)
+    expect(store3.get().notes).toHaveLength(1)
+    expect(store3.get().notes[0].folderId).toBe(DEFAULT_NOTE_FOLDER_ID)
+    expect(store3.get().notes[0].title).toBe('会议记录')
   })
 
   it('旧版本数据（无 entries 字段）迁移为空数组；含日记数据完整读回', () => {

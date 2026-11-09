@@ -1,14 +1,16 @@
 // 渲染端全局状态（zustand）：主进程 DB 为唯一数据源，本地只保存视图状态
 import { create } from 'zustand'
-import type { Database, JournalEntry, Project, Settings, Task, UiEvent, UpdaterState } from '../../shared/types'
+import type { Database, JournalEntry, Note, NoteFolder, Project, Settings, Task, UiEvent, UpdaterState } from '../../shared/types'
 import type { AiStatus } from '../../shared/ai-schema'
 import { applyTheme } from './utils/theme'
 
-export type ViewKind = 'today' | 'upcoming' | 'all' | 'done' | 'journal' | 'project'
+export type ViewKind = 'today' | 'upcoming' | 'all' | 'done' | 'journal' | 'project' | 'noteFolder'
 
 export interface View {
   kind: ViewKind
   projectId?: string
+  /** kind = noteFolder 时的目标文件夹 */
+  folderId?: string
 }
 
 interface AppState {
@@ -35,6 +37,11 @@ interface AppState {
   setDone(id: string, done: boolean): Promise<void>
   upsertJournal(e: JournalEntry): Promise<void>
   deleteJournal(id: string): Promise<void>
+  upsertNote(n: Note): Promise<void>
+  deleteNote(id: string): Promise<void>
+  addNoteFolder(name: string, color: string, parentId: string | null): Promise<string>
+  updateNoteFolder(f: NoteFolder): Promise<void>
+  deleteNoteFolder(id: string): Promise<void>
   addProject(name: string, color: string): Promise<string>
   updateProject(p: Project): Promise<void>
   deleteProject(id: string): Promise<void>
@@ -92,6 +99,19 @@ export const useStore = create<AppState>((set, get) => ({
   },
   deleteJournal: async id => {
     await window.noticeme.deleteJournal(id)
+  },
+  upsertNote: async n => {
+    await window.noticeme.upsertNote(n)
+  },
+  deleteNote: async id => {
+    await window.noticeme.deleteNote(id)
+  },
+  addNoteFolder: async (name, color, parentId) => window.noticeme.addNoteFolder(name, color, parentId),
+  updateNoteFolder: async f => {
+    await window.noticeme.updateNoteFolder(f)
+  },
+  deleteNoteFolder: async id => {
+    await window.noticeme.deleteNoteFolder(id)
   },
   addProject: async (name, color) => window.noticeme.addProject(name, color),
   updateProject: async p => {
