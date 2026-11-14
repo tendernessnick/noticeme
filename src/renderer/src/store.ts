@@ -1,20 +1,14 @@
 // 渲染端全局状态（zustand）：主进程 DB 为唯一数据源，本地只保存视图状态
 import { create } from 'zustand'
-import type { Database, JournalEntry, Note, NoteFolder, Project, Settings, Task, UiEvent, UpdaterState } from '../../shared/types'
+import type { Database, JournalEntry, Note, NoteFolder, Project, Settings, Task, UiEvent, UpdaterState, View } from '../../shared/types'
 import type { AiStatus } from '../../shared/ai-schema'
 import { applyTheme } from './utils/theme'
 
-export type ViewKind = 'today' | 'upcoming' | 'all' | 'done' | 'journal' | 'project' | 'noteFolder' | 'focus'
-
-export interface View {
-  kind: ViewKind
-  projectId?: string
-  /** kind = noteFolder 时的目标文件夹 */
-  folderId?: string
-}
+export type { View, ViewKind } from '../../shared/types'
 
 interface AppState {
   db: Database | null
+  initError: string
   view: View
   search: string
   selectedTaskId: string | null
@@ -25,7 +19,7 @@ interface AppState {
   aiStatus: AiStatus | null
   /** 自动更新状态（主进程推送） */
   updater: UpdaterState | null
-  init(): Promise<void>
+  init(): () => void
   setView(v: View): void
   setSearch(s: string): void
   selectTask(id: string | null): void
@@ -51,6 +45,7 @@ interface AppState {
 
 export const useStore = create<AppState>((set, get) => ({
   db: null,
+  initError: '',
   view: { kind: 'today' },
   search: '',
   selectedTaskId: null,
@@ -60,22 +55,29 @@ export const useStore = create<AppState>((set, get) => ({
   aiStatus: null,
   updater: null,
 
-  init: async () => {
-    const db = await window.noticeme.getDb()
-    set({ db })
-    applyTheme(db.settings.theme)
-    window.noticeme.onDbUpdated(ndb => {
+  init: () => {
+    let disposed = false
+    let dbReceived = false
+    let aiReceived = false
+    let updaterReceived = false
+    const cleanups = [window.noticeme.onDbUpdated(ndb => {
+      dbReceived = true
       set({ db: ndb })
       applyTheme(ndb.settings.theme)
-    })
-    window.noticeme.onAiState(s => set({ aiStatus: s }))
-    void window.noticeme.aiStatus().then(s => set({ aiStatus: s }))
-    window.noticeme.onUpdaterState(s => set({ updater: s }))
-    void window.noticeme.updaterState().then(s => set({ updater: s }))
+    }), window.noticeme.onAiState(s => { aiReceived = true; set({ aiStatus: s }) }),
+    window.noticeme.onUpdaterState(s => { updaterReceived = true; set({ updater: s }) }),
     window.noticeme.onUi((p: UiEvent) => {
       if (p.type === 'quickadd') set(s => ({ quickAddToken: s.quickAddToken + 1 }))
       else if (p.type === 'open-task') set({ selectedTaskId: p.taskId })
-    })
+    })]
+    void window.noticeme.getDb().then(db => {
+      if (disposed || dbReceived) return
+      set({ db, initError: '' })
+      applyTheme(db.settings.theme)
+    }).catch(error => { if (!disposed) set({ initError: String(error) }) })
+    void window.noticeme.aiStatus().then(s => { if (!disposed && !aiReceived) set({ aiStatus: s }) }).catch(() => {})
+    void window.noticeme.updaterState().then(s => { if (!disposed && !updaterReceived) set({ updater: s }) }).catch(() => {})
+    return () => { disposed = true; cleanups.forEach(cleanup => cleanup()) }
   },
 
   setView: v => set({ view: v, search: '' }),

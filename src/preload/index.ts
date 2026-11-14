@@ -38,6 +38,9 @@ export interface AiFocusSuggestResult {
 
 const api = {
   getDb: (): Promise<Database> => ipcRenderer.invoke('db:get'),
+  patchTask: (id: string, patch: Partial<Task>): Promise<void> => ipcRenderer.invoke('task:patch', id, patch),
+  patchJournal: (id: string, patch: Partial<JournalEntry>): Promise<void> => ipcRenderer.invoke('journal:patch', id, patch),
+  patchNote: (id: string, patch: Partial<Note>): Promise<void> => ipcRenderer.invoke('note:patch', id, patch),
   upsertTask: (task: Task): Promise<void> => ipcRenderer.invoke('task:upsert', task),
   deleteTask: (id: string): Promise<void> => ipcRenderer.invoke('task:delete', id),
   setTaskDone: (id: string, done: boolean): Promise<void> =>

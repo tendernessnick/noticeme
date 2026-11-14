@@ -15,6 +15,7 @@ import { createTray, rebuild } from './tray'
 import { applyShortcuts } from './shortcuts'
 import { defaultSettings, newTask, DEFAULT_NOTE_FOLDER_ID, localToday } from '../shared/defaults'
 import { collectFolderSubtree } from '../shared/notes'
+import { patchRecord } from '../shared/record-patch'
 import type { Note, NoteFolder, UpdaterState } from '../shared/types'
 import { nextOccurrence } from '../shared/recurrence'
 import type { AlertEntry, JournalEntry, Project, Settings, Task, UiEvent } from '../shared/types'
@@ -25,6 +26,10 @@ const SMOKE_DIR = process.env.NOTICE_ME_SMOKE || ''
 const IS_SMOKE = !!SMOKE_DIR
 const IS_AI_PROBE = !!process.env.NOTICE_ME_AI_PROBE
 
+if (!app.isPackaged) {
+  // 开发与正式安装使用独立目录，防止开发调试触及个人历史记录。
+  app.setPath('userData', join(app.getPath('appData'), 'noticeme-dev'))
+}
 if (IS_SMOKE) {
   // 每次冒烟使用独立数据目录，避免多次运行的数据互相污染
   app.setPath('userData', join(tmpdir(), `noticeme-smoke-${Date.now()}`))
@@ -258,6 +263,21 @@ const trayDeps: TrayDeps = {
 function registerIpc(): void {
   ipcMain.handle('db:get', () => store.get())
 
+  ipcMain.handle('task:patch', (_e, id: string, patch: Partial<Task>) => {
+    store.mutate(db => patchRecord(db.tasks, id, patch, ['done', 'completedAt']))
+    scheduler.wake()
+  })
+  ipcMain.handle('journal:patch', (_e, id: string, patch: Partial<JournalEntry>) => {
+    store.mutate(db => patchRecord(db.entries, id, patch))
+  })
+  ipcMain.handle('note:patch', (_e, id: string, patch: Partial<Note>) => {
+    store.mutate(db => {
+      const safePatch = { ...patch }
+      if (safePatch.folderId && !db.noteFolders.some(f => f.id === safePatch.folderId)) safePatch.folderId = DEFAULT_NOTE_FOLDER_ID
+      patchRecord(db.notes, id, safePatch)
+    })
+  })
+
   ipcMain.handle('task:upsert', (_e, task: Task) => {
     const nowIso = new Date().toISOString()
     store.mutate(db => {
@@ -349,14 +369,22 @@ function registerIpc(): void {
   ipcMain.handle('data:import', async () => {
     if (!win) return false
     const r = await dialog.showOpenDialog(win, {
-      title: '导入数据（将覆盖当前数据，已自动备份）',
+      title: '选择 NoticeMe 数据备份',
       properties: ['openFile'],
       filters: [{ name: 'JSON', extensions: ['json'] }]
     })
     if (r.canceled || !r.filePaths[0]) return false
+    const confirmation = await dialog.showMessageBox(win, {
+      type: 'warning', title: '确认导入备份',
+      message: '导入会替换当前的任务、日记、笔记和设置。',
+      detail: '确认后会先为当前数据保留独立备份；导入留底不会被每日备份轮换清理。',
+      buttons: ['取消', '保留当前备份并导入'], defaultId: 0, cancelId: 0, noLink: true
+    })
+    if (confirmation.response !== 1) return false
     try {
       store.importFrom(r.filePaths[0])
-    } catch {
+    } catch (error) {
+      dialog.showErrorBox('导入失败，当前数据未替换', error instanceof Error ? error.message : String(error))
       return false
     }
     scheduler.wake()
@@ -606,12 +634,23 @@ async function runSmoke(): Promise<void> {
   await sleep(700)
   await capture(win, join(outDir, 'focus-view.png'))
 
+  if (!win) throw new Error('冒烟主窗口缺失')
+  const { runInteractionChecks } = await import('./smoke-checks')
+  await runInteractionChecks(win, store, outDir)
+
   log(`smoke done ${JSON.stringify(alerts.debugState())}`)
-  app.exit(0)
+  writeFileSync(join(outDir, 'smoke-data-info.json'), JSON.stringify({ dir: app.getPath('userData') }))
+  app.quit()
 }
 
 app.whenReady().then(() => {
-  store = new Store(app.getPath('userData'))
+  try {
+    store = new Store(app.getPath('userData'))
+  } catch (error) {
+    dialog.showErrorBox('NoticeMe 数据需要恢复', `为保护已有记录，应用已停止启动。\n${error instanceof Error ? error.message : String(error)}\n数据目录：${app.getPath('userData')}`)
+    app.quit()
+    return
+  }
 
   // 提示音拷贝到真实文件路径（系统播放器无法读取 asar 内部路径）
   try {
@@ -670,10 +709,17 @@ app.whenReady().then(() => {
 
   // 自动更新：启动静默检查 + 6h 轮询；失败静默；退出静默安装（dev 下自动禁用）
   updater = new AppUpdater(state => broadcastUpdater(state))
-  updater.init()
+  updater.init(IS_SMOKE || IS_AI_PROBE)
 
   registerIpc()
   createWindow()
+  if (store.recoveryInfo && win) {
+    void dialog.showMessageBox(win, {
+      type: 'warning', title: '已从备份恢复数据',
+      message: '主数据无法读取，NoticeMe 已恢复最近的有效备份。',
+      detail: `请检查最近的记录。\n备份：${store.recoveryInfo.backupFile}\n${store.recoveryInfo.archivedFile ? `损坏原件已保留：${store.recoveryInfo.archivedFile}` : '主文件缺失，已从备份重建。'}`
+    })
+  }
   createTray(resourcePath('icon.png'), trayDeps)
   scheduler.start()
   applySettingsSideEffects()
@@ -684,7 +730,11 @@ app.whenReady().then(() => {
     rebuild()
   })
 
-  if (IS_SMOKE) void runSmoke()
+  if (IS_SMOKE) void runSmoke().catch(error => {
+    console.error('[smoke] FAIL', error)
+    writeFileSync(join(SMOKE_DIR, 'failure.log'), String(error))
+    app.exit(1)
+  })
 
   // AI 探针（scripts/ai-smoke.mjs）：验证原生运行时/模型加载/真实推理后打印并退出
   const probeModel = process.env.NOTICE_ME_AI_MODEL || ''

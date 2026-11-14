@@ -1,7 +1,8 @@
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Download, FileCog, FlaskConical, Loader2, Volume2, X } from 'lucide-react'
 import type { NotifyMode, Settings, ThemeMode } from '../../../shared/types'
 import { useStore } from '../store'
+import { flushEditorDrafts } from '../utils/useAutosave'
 
 // 构建时由 electron.vite.config.ts（renderer.define）从 package.json 注入
 declare const __APP_VERSION__: string
@@ -23,6 +24,9 @@ export default function SettingsModal(): JSX.Element {
   const [capturing, setCapturing] = useState<'add' | 'show' | null>(null)
   const [aiTestRaw, setAiTestRaw] = useState('')
   const [aiTesting, setAiTesting] = useState(false)
+  const [dataActionBusy, setDataActionBusy] = useState(false)
+  const actionLock = useRef(false)
+  const [actionFeedback, setActionFeedback] = useState<{ error: boolean; text: string } | null>(null)
   const updaterPhase = updater?.phase ?? 'idle'
   const updaterVersion = updater?.version ?? ''
   const updaterProgress = updater?.progress ?? -1
@@ -49,6 +53,26 @@ export default function SettingsModal(): JSX.Element {
   const playChime = async (): Promise<void> => {
     const url = await window.noticeme.getChime()
     if (url) void new Audio(url).play()
+  }
+
+  const withSavedEditors = async (label: string, action: () => Promise<boolean | void>): Promise<void> => {
+    if (actionLock.current) return
+    actionLock.current = true
+    setDataActionBusy(true)
+    setActionFeedback(null)
+    try {
+      if (!await flushEditorDrafts()) {
+        setActionFeedback({ error: true, text: `尚有修改未能保存，已取消${label}。请回到编辑器重试保存；会话草稿仍保留。` })
+        return
+      }
+      const result = await action()
+      setActionFeedback({ error: false, text: result === false ? `${label}已取消或未完成。若已选择文件，请检查备份格式及文件权限。` : `${label}已完成。` })
+    } catch (error) {
+      setActionFeedback({ error: true, text: `${label}失败：${error instanceof Error ? error.message : String(error)}` })
+    } finally {
+      actionLock.current = false
+      setDataActionBusy(false)
+    }
   }
 
   const captureHotkey = (which: 'add' | 'show') => (e: KeyboardEvent<HTMLInputElement>): void => {
@@ -274,13 +298,13 @@ export default function SettingsModal(): JSX.Element {
         </Section>
 
         <Section title="数据">
-          <Row label="导出备份" desc="全部任务导出为 JSON">
-            <button onClick={() => void window.noticeme.exportData()} className="btn-ghost !py-1 text-xs">
+          <Row label="导出备份" desc="先保存草稿，再导出任务、随心记、笔记及设置">
+            <button disabled={dataActionBusy} onClick={() => void withSavedEditors('导出备份', () => window.noticeme.exportData())} className="btn-ghost !py-1 text-xs disabled:opacity-50">
               导出…
             </button>
           </Row>
           <Row label="导入备份" desc="将覆盖当前数据（自动留底）">
-            <button onClick={() => void window.noticeme.importData()} className="btn-ghost !py-1 text-xs">
+            <button disabled={dataActionBusy} onClick={() => void withSavedEditors('导入备份', () => window.noticeme.importData())} className="btn-ghost !py-1 text-xs disabled:opacity-50">
               导入…
             </button>
           </Row>
@@ -312,7 +336,7 @@ export default function SettingsModal(): JSX.Element {
           >
             <div className="flex items-center gap-1">
               {updaterPhase === 'downloaded' ? (
-                <button onClick={() => void window.noticeme.updaterInstall()} className="btn-primary !px-3 !py-1 text-xs">
+                <button disabled={dataActionBusy} onClick={() => void withSavedEditors('重启更新', () => window.noticeme.updaterInstall())} className="btn-primary !px-3 !py-1 text-xs disabled:opacity-50">
                   重启更新
                 </button>
               ) : updaterFallback && updaterPhase === 'available' ? (
@@ -345,6 +369,11 @@ export default function SettingsModal(): JSX.Element {
           </Row>
         </Section>
 
+        {(dataActionBusy || actionFeedback) && (
+          <p role="status" aria-live="polite" className={`mt-3 rounded-lg px-3 py-2 text-xs ${actionFeedback?.error ? 'bg-red-500/10 text-red-500' : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400'}`}>
+            {dataActionBusy ? '正在保存草稿并处理，请稍候…' : actionFeedback?.text}
+          </p>
+        )}
         <p className="mt-4 border-t border-zinc-100 pt-3 text-center text-[11px] text-zinc-400 dark:border-zinc-800">
           NoticeMe v{__APP_VERSION__} · 本地优先，数据不出你的电脑
         </p>

@@ -5,6 +5,7 @@ import { localToday } from '../../../shared/defaults'
 import { PRIORITY_COLORS } from '../utils/ui'
 import { useStore } from '../store'
 import { taskSections } from '../utils/views'
+import { taskMetrics } from '../../../shared/task-metrics'
 
 export default function TaskList(): JSX.Element {
   const db = useStore(s => s.db)!
@@ -29,9 +30,26 @@ export default function TaskList(): JSX.Element {
   }
 
   const secs = taskSections(db, view, search, showDone)
+  const metrics = taskMetrics(db.tasks)
+  const noResults = search.trim() && secs.every(s => s.tasks.length === 0)
 
   return (
     <div className="flex-1 overflow-y-auto px-6 pb-10">
+      {view.kind === 'today' && !search.trim() && (
+        <dl className="mt-3 grid grid-cols-3 gap-2" aria-label="今日任务概览">
+          {[
+            ['今日待办', metrics.dueToday, '截止日期在今天且尚未完成'],
+            ['已过截止', metrics.overdue, '已超过截止时刻且尚未完成，可能与今日待办重叠'],
+            ['今天完成', metrics.completedToday, '按记录完成日期统计，包括无截止日任务；自动推进的重复任务无完成日志，不计入此数']
+          ].map(([label, value, desc]) => (
+            <div key={label} className="card px-3.5 py-3" title={String(desc)}>
+              <dt className="text-xs text-zinc-500 dark:text-zinc-400">{label}</dt>
+              <dd className={`mt-1 text-2xl font-semibold tabular-nums ${label === '已过截止' && Number(value) > 0 ? 'text-red-500' : label === '今天完成' ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {noResults && <div className="py-14 text-center" role="status"><p className="text-sm text-zinc-500">当前视图没有匹配的任务</p><button className="btn-ghost mt-2" onClick={() => useStore.getState().setSearch('')}>清除搜索</button><button className="btn-ghost mt-2" onClick={() => { const query = search; useStore.getState().setView({ kind: 'all' }); useStore.getState().setSearch(query) }}>在全部任务中搜索</button></div>}
       {secs.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <CheckCircle2 size={36} className="mb-3 text-zinc-300 dark:text-zinc-700" />
@@ -116,13 +134,14 @@ function TaskItem({ task, hideProject }: { task: Task; hideProject?: boolean }):
 
       {/* 内容 */}
       <div className="min-w-0 flex-1">
-        <div
-          className={`truncate text-[13.5px] leading-snug ${
+        <button
+          onClick={e => { e.stopPropagation(); selectTask(task.id) }}
+          className={`block w-full break-words text-left text-[13.5px] leading-snug ${
             task.done ? 'text-zinc-400 line-through' : 'font-medium'
           }`}
         >
           {task.title}
-        </div>
+        </button>
         <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px]">
           {task.dueAt && (
             <span className={`inline-flex items-center gap-1 ${overdue ? 'font-medium text-red-500' : 'text-zinc-400'}`}>
@@ -137,9 +156,9 @@ function TaskItem({ task, hideProject }: { task: Task; hideProject?: boolean }):
             </span>
           )}
           {task.plannedDay && !task.done && (
-            <span className="inline-flex items-center gap-1 font-medium text-accent" title="已列入今日聚焦计划">
+            <span className="inline-flex items-center gap-1 font-medium text-accent" title={`计划处理日期：${task.plannedDay}（独立于截止日期）`}>
               <Sunrise size={11} />
-              今日聚焦
+              {task.plannedDay === localToday() ? '今日聚焦' : task.plannedDay < localToday() ? `待续计划 · ${task.plannedDay}` : `计划 · ${task.plannedDay}`}
             </span>
           )}
           {task.repeat && <Repeat size={11} className="text-zinc-400" />}
@@ -158,7 +177,7 @@ function TaskItem({ task, hideProject }: { task: Task; hideProject?: boolean }):
       </div>
 
       {/* 悬停操作 */}
-      <div className="mt-0.5 flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+      <div className="mt-0.5 flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
         {!task.done && task.plannedDay !== localToday() && (
           <button
             onClick={e => {

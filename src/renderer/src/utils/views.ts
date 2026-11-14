@@ -1,7 +1,6 @@
 // 视图分组与排序（渲染端）
-import type { Database, Task } from '../../../shared/types'
+import type { Database, Task, View } from '../../../shared/types'
 import { startOfDay, isSameDay, addDays, WEEKDAYS_CN } from '../../../shared/datetime'
-import type { View } from '../store'
 
 export interface Section {
   key: string
@@ -20,7 +19,7 @@ export function sortTasks(a: Task, b: Task): number {
   const p = a.priority - b.priority
   if (p !== 0) return p
   const dm = dueMs(a) - dueMs(b)
-  if (dm !== 0) return dm
+  if (!Number.isNaN(dm) && dm !== 0) return dm
   return a.order - b.order
 }
 
@@ -45,8 +44,9 @@ function dayLabel(day: Date, now: Date): string {
 /** 通用分组：逾期 / 今天 / 明天 / 本周稍后 / 更晚 / 无日期 / 已完成 */
 function groupDefault(tasks: Task[], now: Date): Section[] {
   const todayStart = startOfDay(now).getTime()
-  const tomorrowStart = todayStart + 86400000
-  const weekEnd = todayStart + 7 * 86400000
+  const tomorrowStart = addDays(startOfDay(now), 1).getTime()
+  const dayAfterStart = addDays(startOfDay(now), 2).getTime()
+  const weekEnd = addDays(startOfDay(now), 7).getTime()
   const active = tasks.filter(t => !t.done)
   const done = tasks.filter(t => t.done)
   const g = (pred: (t: Task) => boolean): Task[] => active.filter(pred).sort(sortTasks)
@@ -61,12 +61,12 @@ function groupDefault(tasks: Task[], now: Date): Section[] {
   const tomorrow = g(t => {
     if (!t.dueAt) return false
     const ms = new Date(t.dueAt).getTime()
-    return ms >= tomorrowStart && ms < tomorrowStart + 86400000
+    return ms >= tomorrowStart && ms < dayAfterStart
   })
   const future = g(t => {
     if (!t.dueAt) return false
     const ms = new Date(t.dueAt).getTime()
-    return ms >= tomorrowStart + 86400000 && ms < weekEnd
+    return ms >= dayAfterStart && ms < weekEnd
   })
   const later = g(t => !!t.dueAt && new Date(t.dueAt).getTime() >= weekEnd)
   const noDate = g(t => !t.dueAt)
@@ -85,7 +85,8 @@ function groupDefault(tasks: Task[], now: Date): Section[] {
 export function taskSections(db: Database, view: View, search: string, showDone: boolean): Section[] {
   const now = new Date()
   if (search.trim()) {
-    const res = db.tasks.filter(t => matchSearch(t, search)).sort(sortTasks)
+    const scoped = taskSections(db, view, '', showDone).flatMap(s => s.tasks)
+    const res = scoped.filter(t => matchSearch(t, search)).sort(sortTasks)
     return [{ key: 'search', label: `搜索结果（${res.length}）`, tasks: res }]
   }
 
@@ -96,10 +97,13 @@ export function taskSections(db: Database, view: View, search: string, showDone:
 
   if (view.kind === 'today') {
     const todayStart = startOfDay(now).getTime()
-    const inToday = db.tasks.filter(t => t.dueAt && new Date(t.dueAt).getTime() < todayStart + 86400000)
+    const tomorrowStart = addDays(startOfDay(now), 1).getTime()
+    const inToday = db.tasks.filter(t => t.dueAt && new Date(t.dueAt).getTime() < tomorrowStart)
     const overdue = inToday.filter(t => !t.done && new Date(t.dueAt!).getTime() < todayStart).sort(sortTasks)
     const today = inToday.filter(t => !t.done && new Date(t.dueAt!).getTime() >= todayStart).sort(sortTasks)
-    const doneToday = inToday.filter(t => t.done).sort(sortTasks)
+    const doneToday = db.tasks.filter(t => t.done && t.completedAt &&
+      Date.parse(t.completedAt) >= todayStart && Date.parse(t.completedAt) < tomorrowStart)
+      .sort((a, b) => Date.parse(b.completedAt!) - Date.parse(a.completedAt!))
     const secs: Section[] = []
     if (overdue.length) secs.push({ key: 'overdue', label: `已逾期（${overdue.length}）`, tasks: overdue })
     secs.push({ key: 'today', label: `今天（${today.length}）`, tasks: today })
@@ -113,16 +117,17 @@ export function taskSections(db: Database, view: View, search: string, showDone:
     const secs: Section[] = []
     const inRange = db.tasks.filter(t => !t.done && t.dueAt && new Date(t.dueAt).getTime() >= todayStart)
     for (let i = 0; i < 7; i++) {
-      const s = todayStart + i * 86400000
+      const s = addDays(startOfDay(now), i).getTime()
+      const end = addDays(startOfDay(now), i + 1).getTime()
       const list = inRange
         .filter(t => {
           const ms = new Date(t.dueAt!).getTime()
-          return ms >= s && ms < s + 86400000
+          return ms >= s && ms < end
         })
         .sort(sortTasks)
       if (list.length) secs.push({ key: `d${i}`, label: dayLabel(new Date(s), now), tasks: list })
     }
-    const later = inRange.filter(t => new Date(t.dueAt!).getTime() >= todayStart + 7 * 86400000).sort(sortTasks)
+    const later = inRange.filter(t => new Date(t.dueAt!).getTime() >= addDays(startOfDay(now), 7).getTime()).sort(sortTasks)
     if (later.length) secs.push({ key: 'later', label: '更晚', tasks: later })
     if (!secs.length) secs.push({ key: 'empty', label: '未来 7 天暂无安排', tasks: [] })
     return secs

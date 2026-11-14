@@ -12,6 +12,9 @@ export interface AlertActionPayload {
 
 export interface NoticeMeApi {
   getDb(): Promise<Database>
+  patchTask(id: string, patch: Partial<Task>): Promise<void>
+  patchJournal(id: string, patch: Partial<JournalEntry>): Promise<void>
+  patchNote(id: string, patch: Partial<Note>): Promise<void>
   upsertTask(task: Task): Promise<void>
   deleteTask(id: string): Promise<void>
   setTaskDone(id: string, done: boolean): Promise<void>

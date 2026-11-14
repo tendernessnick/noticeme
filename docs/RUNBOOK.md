@@ -8,7 +8,7 @@ npm run dev        # 开发模式启动（热更新）
 ```
 
 - `F12` 打开开发者工具（仅 dev 模式）
-- dev 模式数据与正式安装共用 `userData` 目录，见下文
+- v0.5.0 起 dev 使用独立 `%APPDATA%\noticeme-dev\`，正式安装仍用原 `%APPDATA%\noticeme\`。两者不自动复制或覆盖，避免调试改动个人记录；开发中需要样例可手动导入导出副本。
 
 ## 常用命令
 
@@ -16,17 +16,22 @@ npm run dev        # 开发模式启动（热更新）
 |---|---|
 | `npm run typecheck` | 主进程 + 渲染端 TS 类型检查 |
 | `npm run build` | 产物构建到 `out/` |
-| `npm run test` | vitest 单元测试（46 用例） |
-| `npm run smoke` | 冒烟测试：自动注入演示数据、截图（主界面/提醒卡片/暗色）到 `smoke-out/` 后退出；使用独立临时数据目录，**不污染真实数据** |
+| `npm run test` | vitest 单元测试（142 用例） |
+| `npm run smoke` | 独立临时数据目录，注入演示记录并验证聚焦/编辑/搜索/退出保存；截图及报告输出到 `smoke-out/<时间戳>/`，**不污染真实数据** |
+| `node scripts/smoke.mjs "dist/0.5.0/win-unpacked/NoticeMe.exe"` | 对 Windows 打包产物执行相同隔离验收（先完成打包） |
 | `npm run dist` | 打包 Windows 安装包 + 便携版到 `dist/` |
 | `npm run release` | 发布一条龙：typecheck → 单测 → 打包 → 上传 GitHub Release（需 gh CLI 已登录） |
 | `npm run gen:assets` | 重新生成图标/提示音资产（一般无需执行） |
 
+冒烟源码模式限时 60 秒、打包模式 180 秒（便携版需自解压原生运行时），可通过 `NOTICE_ME_SMOKE_TIMEOUT_MS` 调整。限时只影响测试等待，所有交互与落盘断言不变。
+
 ## 数据位置
 
 - 数据文件：`%APPDATA%\noticeme\data.json`（资源管理器输入 `%APPDATA%\noticeme` 直达）
-- 每日备份：`%APPDATA%\noticeme\backups\`（保留最近 7 份，每天第一笔变更时快照）
-- 导入数据前自动留底 `data-before-import-<时间戳>.json`
+- 每日备份：`%APPDATA%\noticeme\backups\`（保留最近 7 份，每天第一笔变更**前**保留上一状态）
+- 导入数据前自动留底 `data-before-import-<时间戳>-<唯一标识>.json`，永久保留，不计入每日 7 份限额；导入需要确认覆盖当前数据。
+- 主数据损坏时先保留 `.corrupt-*` 原件，再选择最近的有效备份恢复并提示。若无有效备份或版本过新，停止启动保护原件；请保留数据目录，从已导出的副本恢复，勿删除文件排错。
+- 编辑器出现保存错误时，草稿仅保留在**当前会话内存**，可切回编辑器重试。正常退出会先保存，失败取消退出；强制结束进程、断电仍可能丢失未落盘输入。
 
 **备份/迁移**：设置 → 数据 → 导出备份（JSON）；换机或重装后用导入恢复。
 

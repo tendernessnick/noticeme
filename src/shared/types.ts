@@ -1,6 +1,13 @@
 // NoticeMe 共享数据模型（渲染端 / 主进程 / 测试共用，不依赖 Electron）
 export type Priority = 1 | 2 | 3 | 4 // 1 = 最高
 
+export type ViewKind = 'today' | 'upcoming' | 'all' | 'done' | 'journal' | 'project' | 'noteFolder' | 'focus'
+export interface View {
+  kind: ViewKind
+  projectId?: string
+  folderId?: string
+}
+
 /** 提醒：offsetMin = 相对截止时间提前的分钟数；null 表示准时 */
 export interface Reminder {
   id: string

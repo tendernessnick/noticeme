@@ -10,21 +10,24 @@ import JournalView from './components/JournalView'
 import NotesView from './components/NotesView'
 import FocusView from './components/FocusView'
 import SettingsModal from './components/SettingsModal'
+import { useClock } from './utils/useClock'
 
 export default function App(): JSX.Element {
+  useClock()
   const db = useStore(s => s.db)
+  const initError = useStore(s => s.initError)
   const selectedTaskId = useStore(s => s.selectedTaskId)
   const settingsOpen = useStore(s => s.settingsOpen)
   const view = useStore(s => s.view)
   const init = useStore(s => s.init)
 
   useEffect(() => {
-    void init()
+    return init()
   }, [init])
 
   if (!db) {
     return (
-      <div className="grid h-screen place-items-center text-sm text-zinc-500">加载中…</div>
+      <div className="grid h-screen place-items-center p-8 text-sm text-zinc-500">{initError ? `读取数据失败，请重启应用。${initError}` : '加载中…'}</div>
     )
   }
 
@@ -59,7 +62,7 @@ export default function App(): JSX.Element {
           <TaskList />
         </main>
       )}
-      {selected && <TaskDetail task={selected} />}
+      {selected && <TaskDetail key={selected.id} task={selected} />}
       {settingsOpen && <SettingsModal />}
     </div>
   )

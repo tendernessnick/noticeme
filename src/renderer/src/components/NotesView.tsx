@@ -4,6 +4,8 @@ import { Check, NotebookPen, Pencil, Pin, PinOff, Plus, Search, Trash2, X } from
 import type { Note, NoteFolder } from '../../../shared/types'
 import { DEFAULT_NOTE_FOLDER_ID, newNote } from '../../../shared/defaults'
 import { useStore } from '../store'
+import { useAutosave } from '../utils/useAutosave'
+import SaveStatus from './SaveStatus'
 
 /** 更新时间标签：今天 / 昨天 / M月D日（跨年带年份） */
 function updatedLabel(updatedAt: string, now: Date): string {
@@ -98,30 +100,14 @@ export default function NotesView(): JSX.Element {
   }
 
   // ---------- 编辑器草稿（自动保存，模式与随心记一致） ----------
-  const [draft, setDraft] = useState<Note | null>(selected)
+  const autosave = useAutosave('notes', selected, (id, patch) => window.noticeme.patchNote(id, patch))
+  const { draft, save, saveDebounced } = autosave
   const [tagText, setTagText] = useState(selected?.tags.join(', ') ?? '')
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    setDraft(selected)
-    setTagText(selected?.tags.join(', ') ?? '')
+    setTagText(draft?.tags.join(', ') ?? '')
     setConfirmDelete(false)
-  }, [selected?.id, selected?.updatedAt])
-
-  const save = (patch: Partial<Note>): void => {
-    if (!draft) return
-    const next = { ...draft, ...patch }
-    setDraft(next)
-    void upsert(next)
-  }
-
-  const saveDebounced = (patch: Partial<Note>): void => {
-    if (!draft) return
-    const next = { ...draft, ...patch }
-    setDraft(next)
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => void upsert(next), 450)
-  }
+  }, [selected?.id])
 
   const commitTags = (): void => {
     const tags = tagText
@@ -136,6 +122,7 @@ export default function NotesView(): JSX.Element {
     const id = draft.id
     if (confirmTimer.current) clearTimeout(confirmTimer.current)
     setConfirmDelete(false)
+    await autosave.discard()
     await remove(id)
     if (selectedId === id) setSelectedId(null)
   }
@@ -177,20 +164,23 @@ export default function NotesView(): JSX.Element {
             {filtered.map(n => {
               const isActive = selectedId === n.id
               return (
-                <div
+                <button
+                  type="button"
                   key={n.id}
+                  data-note-id={n.id}
+                  aria-pressed={isActive}
                   onClick={() => setSelectedId(n.id)}
-                  className={`cursor-pointer rounded-xl border px-3 py-2 transition ${
+                  className={`w-full cursor-pointer rounded-xl border px-3 py-2 text-left transition ${
                     isActive
                       ? 'border-accent/50 bg-accent/10 dark:bg-accent/20'
                       : 'border-transparent hover:border-zinc-200 hover:bg-zinc-50 dark:hover:border-zinc-800 dark:hover:bg-zinc-800/50'
                   }`}
                 >
-                  <div className="flex items-center gap-1.5">
+                  <span className="flex items-center gap-1.5">
                     {n.pinned && <Pin size={11} className="shrink-0 text-accent" />}
                     <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{previewOf(n)}</span>
-                  </div>
-                  <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-zinc-400">
+                  </span>
+                  <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-zinc-400">
                     <span>更新于 {updatedLabel(n.updatedAt, new Date())}</span>
                     {n.tags.slice(0, 2).map(t => (
                       <span key={t} className="rounded bg-zinc-100 px-1 dark:bg-zinc-800 dark:text-zinc-400">
@@ -198,8 +188,8 @@ export default function NotesView(): JSX.Element {
                       </span>
                     ))}
                     {n.tags.length > 2 && <span>+{n.tags.length - 2}</span>}
-                  </div>
-                </div>
+                  </span>
+                </button>
               )
             })}
           </div>
@@ -241,7 +231,7 @@ export default function NotesView(): JSX.Element {
               {confirmDelete ? (
                 <span className="flex items-center gap-1 rounded-lg bg-red-500/10 px-2 py-1 text-xs text-red-500 animate-fadeIn">
                   确认删除？
-                  <button onClick={() => void doDelete()} className="rounded bg-red-500 px-1.5 py-0.5 text-white hover:bg-red-600">
+                  <button aria-label="确认删除" onClick={() => void doDelete()} className="rounded bg-red-500 px-1.5 py-0.5 text-white hover:bg-red-600">
                     <Check size={11} />
                   </button>
                   <button
@@ -266,8 +256,10 @@ export default function NotesView(): JSX.Element {
 
           {/* 标题 */}
           <input
+            aria-label="笔记标题"
             value={draft.title}
             onChange={e => saveDebounced({ title: e.target.value })}
+            onBlur={() => void autosave.flush()}
             placeholder="标题（可留空）"
             className="bg-transparent px-5 pt-4 text-lg font-semibold outline-none placeholder:text-zinc-300 dark:placeholder:text-zinc-600"
           />
@@ -277,7 +269,10 @@ export default function NotesView(): JSX.Element {
             <span className="text-[11px] text-zinc-400">标签</span>
             <input
               value={tagText}
-              onChange={e => setTagText(e.target.value)}
+              onChange={e => {
+                setTagText(e.target.value)
+                saveDebounced({ tags: e.target.value.split(/[,，\s]+/).map(t => t.replace(/^#/, '').trim()).filter(Boolean) })
+              }}
               onBlur={commitTags}
               onKeyDown={e => {
                 if (e.key === 'Enter') commitTags()
@@ -294,15 +289,17 @@ export default function NotesView(): JSX.Element {
 
           {/* 正文 */}
           <textarea
+            aria-label="笔记正文"
             ref={contentRef}
             value={draft.content}
             onChange={e => saveDebounced({ content: e.target.value })}
+            onBlur={() => void autosave.flush()}
             placeholder={'写点什么…资料、想法、清单都可以'}
             className="flex-1 resize-none bg-transparent px-5 py-3 text-[13.5px] leading-relaxed outline-none placeholder:text-zinc-300 dark:placeholder:text-zinc-600"
           />
 
           <div className="border-t border-zinc-100 px-5 py-2 text-[11px] text-zinc-400 dark:border-zinc-800">
-            更新于 {updatedLabel(draft.updatedAt, new Date())} · 自动保存 · 创建于 {draft.createdAt.slice(0, 10)}
+            更新于 {updatedLabel(draft.updatedAt, new Date())} · <SaveStatus state={autosave.state} error={autosave.error} retry={autosave.flush} /> · 创建于 {draft.createdAt.slice(0, 10)}
             {draft.pinned && ' · 置顶中'}
           </div>
         </section>

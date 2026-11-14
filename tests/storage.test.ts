@@ -1,15 +1,25 @@
 // 存储层测试：读写往返 / 原子写入 / 备份 / 导入导出 / 损坏恢复
-import { describe, expect, it, beforeEach } from 'vitest'
-import { mkdtempSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs'
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
+import { mkdtempSync, readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, utimesSync, unlinkSync, renameSync, copyFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Store } from '../src/main/store'
-import { DEFAULT_NOTE_FOLDER_ID, newNote, newTask } from '../src/shared/defaults'
+import { createDefaultDb, DEFAULT_NOTE_FOLDER_ID, newNote, newTask } from '../src/shared/defaults'
+
+vi.mock('node:fs', async importOriginal => {
+  const original = await importOriginal<typeof import('node:fs')>()
+  return { ...original, renameSync: vi.fn(original.renameSync), copyFileSync: vi.fn(original.copyFileSync) }
+})
 
 let dir: string
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'noticeme-store-'))
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+  vi.clearAllMocks()
 })
 
 describe('Store', () => {
@@ -155,11 +165,10 @@ describe('Store', () => {
     expect(backups.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('损坏的 data.json → 自动降级为默认数据并留档', () => {
+  it('损坏且无有效备份 → 停止启动并原样保留 data.json，禁止默认欢迎数据覆盖历史', () => {
     writeFileSync(join(dir, 'data.json'), '{oops not json', 'utf-8')
-    const store = new Store(dir)
-    expect(store.get().tasks.length).toBeGreaterThan(0) // 默认欢迎任务
-    expect(readdirSync(dir).some(f => f.includes('.corrupt-'))).toBe(true)
+    expect(() => new Store(dir)).toThrow('已停止启动以保护历史数据')
+    expect(readFileSync(join(dir, 'data.json'), 'utf-8')).toBe('{oops not json')
   })
 
   it('exportTo / importFrom 往返', () => {
@@ -201,5 +210,182 @@ describe('Store', () => {
     off()
     store.mutate(() => undefined)
     expect(called).toBe(1)
+  })
+
+  it.each(['{oops not json', '{"hello":1}'])('损坏或结构无效的主文件从最新有效备份恢复，跳过损坏备份并保留原始字节：%s', corrupt => {
+    const backupDir = join(dir, 'backups')
+    mkdirSync(backupDir)
+    const older = createDefaultDb()
+    older.tasks = [newTask({ id: 'older', title: '较早的任务' })]
+    const recent = createDefaultDb()
+    recent.tasks = [newTask({ id: 'recent', title: '需要保留的任务', plannedDay: '2026-11-14' })]
+    recent.notes = [newNote({ id: 'note-kept', title: '历史笔记', content: '完整原文' })]
+    const olderPath = join(backupDir, 'data-2026-01-01.json')
+    const recentPath = join(backupDir, 'data-before-import-123.json')
+    const brokenPath = join(backupDir, 'data-2026-01-03.json')
+    writeFileSync(olderPath, JSON.stringify(older))
+    writeFileSync(recentPath, JSON.stringify(recent))
+    writeFileSync(brokenPath, '{broken')
+    utimesSync(olderPath, 100, 100)
+    utimesSync(recentPath, 200, 200)
+    utimesSync(brokenPath, 300, 300)
+    writeFileSync(join(dir, 'data.json'), corrupt)
+
+    const store = new Store(dir)
+    expect(store.get().tasks).toEqual(recent.tasks)
+    expect(store.get().notes).toEqual(recent.notes)
+    expect(store.get().entries).toEqual(recent.entries)
+    expect(store.recoveryInfo?.backupFile).toBe(recentPath)
+    expect(readFileSync(store.recoveryInfo!.archivedFile!, 'utf-8')).toBe(corrupt)
+    expect(JSON.parse(readFileSync(join(dir, 'data.json'), 'utf-8')).notes).toEqual(recent.notes)
+    expect(new Store(dir).recoveryInfo).toBeNull()
+    expect(readFileSync(recentPath, 'utf-8')).toBe(JSON.stringify(recent))
+  })
+
+  it('主文件丢失但有有效快照 → 自动恢复，不能当作全新安装', () => {
+    const store = new Store(dir)
+    store.mutate(db => db.tasks.push(newTask({ id: 'kept', title: '别丢我' })))
+    unlinkSync(join(dir, 'data.json'))
+    const recovered = new Store(dir)
+    expect(recovered.get().tasks.some(task => task.id === 'kept')).toBe(true)
+    expect(recovered.recoveryInfo?.archivedFile).toBeNull()
+    expect(existsSync(join(dir, 'data.json'))).toBe(true)
+  })
+
+  it('主文件缺失且只有损坏快照或旧损坏留档 → 停止启动，不生成默认数据', () => {
+    mkdirSync(join(dir, 'backups'))
+    writeFileSync(join(dir, 'backups', 'data-2026-01-01.json'), '{bad')
+    expect(() => new Store(dir)).toThrow('已停止启动以保护历史数据')
+    expect(existsSync(join(dir, 'data.json'))).toBe(false)
+    unlinkSync(join(dir, 'backups', 'data-2026-01-01.json'))
+    writeFileSync(join(dir, 'data.json.corrupt-123'), '{old broken')
+    expect(() => new Store(dir)).toThrow('已停止启动以保护历史数据')
+    expect(existsSync(join(dir, 'data.json'))).toBe(false)
+  })
+
+  it('数据版本比应用新 → 明确拒绝，不能回滚到旧快照', () => {
+    mkdirSync(join(dir, 'backups'))
+    writeFileSync(join(dir, 'backups', 'data-2026-01-01.json'), JSON.stringify(createDefaultDb()))
+    const newer = JSON.stringify({ ...createDefaultDb(), version: 999 })
+    writeFileSync(join(dir, 'data.json'), newer)
+    expect(() => new Store(dir)).toThrow('更新版本')
+    expect(readFileSync(join(dir, 'data.json'), 'utf-8')).toBe(newer)
+  })
+
+  it('每日第一笔修改的快照保存修改前的数据', () => {
+    const original = createDefaultDb()
+    original.tasks = [newTask({ id: 'important', title: '修改前历史' })]
+    writeFileSync(join(dir, 'data.json'), JSON.stringify(original))
+    const store = new Store(dir)
+    store.mutate(db => { db.tasks = [] })
+    const snapshot = readdirSync(join(dir, 'backups')).find(file => /^data-\d{4}-\d{2}-\d{2}\.json$/.test(file))!
+    expect(JSON.parse(readFileSync(join(dir, 'backups', snapshot), 'utf-8')).tasks).toEqual(original.tasks)
+    expect(store.get().tasks).toEqual([])
+  })
+
+  it('轮换仅保留 7 份每日快照，所有导入前留底与其他历史文件原样保留', () => {
+    const store = new Store(dir)
+    const backupDir = join(dir, 'backups')
+    for (let day = 1; day <= 8; day++) writeFileSync(join(backupDir, `data-2020-01-0${day}.json`), '{}')
+    for (let i = 0; i < 12; i++) writeFileSync(join(backupDir, `data-before-import-${i}.json`), `history-${i}`)
+    writeFileSync(join(backupDir, 'data-important-history.json'), 'retain')
+    store.mutate(() => undefined)
+    const files = readdirSync(backupDir)
+    expect(files.filter(file => /^data-\d{4}-\d{2}-\d{2}\.json$/.test(file))).toHaveLength(7)
+    expect(files.filter(file => file.startsWith('data-before-import-'))).toHaveLength(12)
+    expect(readFileSync(join(backupDir, 'data-important-history.json'), 'utf-8')).toBe('retain')
+    for (let i = 0; i < 12; i++) expect(readFileSync(join(backupDir, `data-before-import-${i}.json`), 'utf-8')).toBe(`history-${i}`)
+  })
+
+  it('修改函数抛错 → 内存、主文件和监听者保持不变', () => {
+    const store = new Store(dir)
+    store.mutate(() => undefined)
+    const before = structuredClone(store.get())
+    const beforeFile = readFileSync(join(dir, 'data.json'), 'utf-8')
+    const listener = vi.fn()
+    store.onChange(listener)
+    expect(() => store.mutate(db => { db.tasks = []; throw new Error('cancel') })).toThrow('cancel')
+    expect(store.get()).toEqual(before)
+    expect(readFileSync(join(dir, 'data.json'), 'utf-8')).toBe(beforeFile)
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('原子替换失败 → 内存、原文件和监听者保持不变，清除本次临时文件', () => {
+    const store = new Store(dir)
+    store.mutate(() => undefined)
+    const before = structuredClone(store.get())
+    const beforeFile = readFileSync(join(dir, 'data.json'), 'utf-8')
+    const listener = vi.fn()
+    store.onChange(listener)
+    vi.mocked(renameSync).mockImplementationOnce(() => { throw new Error('disk write failed') })
+    expect(() => store.mutate(db => { db.tasks = [] })).toThrow('disk write failed')
+    expect(store.get()).toEqual(before)
+    expect(readFileSync(join(dir, 'data.json'), 'utf-8')).toBe(beforeFile)
+    expect(listener).not.toHaveBeenCalled()
+    expect(readdirSync(dir).filter(file => file.endsWith('.tmp'))).toHaveLength(0)
+  })
+
+  it('写前快照失败 → 不能覆盖主文件或发布内存状态', () => {
+    const original = createDefaultDb()
+    const beforeFile = JSON.stringify(original)
+    writeFileSync(join(dir, 'data.json'), beforeFile)
+    const store = new Store(dir)
+    const before = structuredClone(store.get())
+    vi.mocked(copyFileSync).mockImplementationOnce(() => { throw new Error('backup disk failed') })
+    expect(() => store.mutate(db => { db.tasks = [] })).toThrow('backup disk failed')
+    expect(store.get()).toEqual(before)
+    expect(readFileSync(join(dir, 'data.json'), 'utf-8')).toBe(beforeFile)
+  })
+
+  it('导入写入失败 → 当前数据仍完整，导入前留底也完整', () => {
+    const store = new Store(dir)
+    store.mutate(db => db.tasks.push(newTask({ id: 'old', title: '不能丢的当前任务' })))
+    const before = structuredClone(store.get())
+    const beforeFile = readFileSync(join(dir, 'data.json'), 'utf-8')
+    const imported = createDefaultDb()
+    imported.tasks = []
+    const importPath = join(dir, 'import.json')
+    writeFileSync(importPath, JSON.stringify(imported))
+    vi.mocked(renameSync).mockImplementationOnce(() => { throw new Error('import disk failed') })
+    expect(() => store.importFrom(importPath)).toThrow('import disk failed')
+    expect(store.get()).toEqual(before)
+    expect(readFileSync(join(dir, 'data.json'), 'utf-8')).toBe(beforeFile)
+    const archived = readdirSync(join(dir, 'backups')).find(file => file.startsWith('data-before-import-'))!
+    expect(readFileSync(join(dir, 'backups', archived), 'utf-8')).toBe(beforeFile)
+  })
+
+  it('导入含损坏记录的备份 → 拒绝而非静默过滤记录', () => {
+    const store = new Store(dir)
+    store.mutate(() => undefined)
+    const before = readFileSync(join(dir, 'data.json'), 'utf-8')
+    const broken = { ...createDefaultDb(), tasks: [{ id: 'broken', title: null }] }
+    const importPath = join(dir, 'broken-import.json')
+    writeFileSync(importPath, JSON.stringify(broken))
+    expect(() => store.importFrom(importPath)).toThrow('损坏记录')
+    expect(readFileSync(join(dir, 'data.json'), 'utf-8')).toBe(before)
+  })
+
+  it('补默认文件夹不能掩盖导入中被过滤的损坏文件夹', () => {
+    const store = new Store(dir)
+    const broken = { ...createDefaultDb(), noteFolders: [{ id: 'broken-folder', name: null }] }
+    const importPath = join(dir, 'broken-folders.json')
+    writeFileSync(importPath, JSON.stringify(broken))
+    expect(() => store.importFrom(importPath)).toThrow('损坏记录')
+    expect(store.get().noteFolders.some(folder => folder.id === DEFAULT_NOTE_FOLDER_ID)).toBe(true)
+    expect(existsSync(join(dir, 'data.json'))).toBe(false)
+  })
+
+  it('恢复时原子替换失败 → 损坏主文件及恢复来源都原样保留', () => {
+    mkdirSync(join(dir, 'backups'))
+    const source = JSON.stringify(createDefaultDb())
+    const backupPath = join(dir, 'backups', 'data-2026-01-01.json')
+    writeFileSync(backupPath, source)
+    writeFileSync(join(dir, 'data.json'), '{bad')
+    vi.mocked(renameSync).mockImplementationOnce(() => { throw new Error('recovery write failed') })
+    expect(() => new Store(dir)).toThrow('recovery write failed')
+    expect(readFileSync(join(dir, 'data.json'), 'utf-8')).toBe('{bad')
+    expect(readFileSync(backupPath, 'utf-8')).toBe(source)
+    const archived = readdirSync(dir).find(file => file.startsWith('data.json.corrupt-'))!
+    expect(readFileSync(join(dir, archived), 'utf-8')).toBe('{bad')
   })
 })

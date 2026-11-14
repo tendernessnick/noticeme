@@ -23,6 +23,7 @@ import { useStore } from '../store'
 import { DEFAULT_NOTE_FOLDER_ID, PROJECT_PALETTE, localToday } from '../../../shared/defaults'
 import { collectFolderSubtree } from '../../../shared/notes'
 import { START_OF_TODAY } from '../utils/ui'
+import { addDays, startOfDay } from '../../../shared/datetime'
 
 const NAV: Array<{ kind: View['kind']; label: string; icon: typeof Sun }> = [
   { kind: 'focus', label: '今日聚焦', icon: Sunrise },
@@ -117,12 +118,13 @@ export default function Sidebar(): JSX.Element {
   }
 
   const start = START_OF_TODAY()
+  const tomorrowStart = addDays(startOfDay(new Date()), 1).getTime()
   const active = db.tasks.filter(t => !t.done)
   const focusToday = localToday()
   const counts: Record<string, number> = {
     focus: active.filter(t => t.plannedDay === focusToday).length,
-    today: active.filter(t => t.dueAt && new Date(t.dueAt).getTime() < start + 86400000).length,
-    upcoming: active.filter(t => t.dueAt && new Date(t.dueAt).getTime() >= start + 86400000).length,
+    today: active.filter(t => t.dueAt && new Date(t.dueAt).getTime() < tomorrowStart).length,
+    upcoming: active.filter(t => t.dueAt && new Date(t.dueAt).getTime() >= start).length,
     all: active.length,
     done: db.tasks.filter(t => t.done).length,
     journal: db.entries.length

@@ -29,8 +29,8 @@ export class AppUpdater {
   constructor(private readonly notify: (state: UpdaterState) => void) {}
 
   /** 应用就绪后调用；打包前（dev）与不支持的形态不启用 */
-  init(): void {
-    if (!app.isPackaged) {
+  init(isolatedTest = false): void {
+    if (!app.isPackaged || isolatedTest) {
       this.disabled = true
       return
     }

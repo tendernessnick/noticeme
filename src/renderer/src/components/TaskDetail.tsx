@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { X, CalendarClock, BellRing, Repeat as RepeatIcon, Flag, FolderKanban, Trash2, Tags, StickyNote } from 'lucide-react'
 import type { Priority, RepeatRule, Reminder, Task } from '../../../shared/types'
 import { uid } from '../../../shared/defaults'
@@ -12,6 +12,8 @@ import {
 } from '../../../shared/datetime'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '../utils/ui'
 import { useStore } from '../store'
+import { useAutosave } from '../utils/useAutosave'
+import SaveStatus from './SaveStatus'
 
 const REMINDER_PRESETS: Array<{ label: string; value: number | null }> = [
   { label: '准时', value: null },
@@ -40,17 +42,16 @@ function sameRule(a: RepeatRule | null, b: RepeatRule | null): boolean {
 
 export default function TaskDetail({ task }: { task: Task }): JSX.Element {
   const db = useStore(s => s.db)!
-  const upsertTask = useStore(s => s.upsertTask)
   const deleteTask = useStore(s => s.deleteTask)
   const selectTask = useStore(s => s.selectTask)
-  const [draft, setDraft] = useState<Task>(task)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autosave = useAutosave('tasks', task, (id, patch) => window.noticeme.patchTask(id, patch))
+  const draft = autosave.draft!
+  const { save, saveDebounced } = autosave
   const [tagText, setTagText] = useState(task.tags.join(', '))
 
   useEffect(() => {
-    setDraft(task)
-    setTagText(task.tags.join(', '))
-  }, [task.id, task.updatedAt])
+    setTagText(draft.tags.join(', '))
+  }, [task.id])
 
   // Esc 关闭抽屉
   useEffect(() => {
@@ -60,21 +61,6 @@ export default function TaskDetail({ task }: { task: Task }): JSX.Element {
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
   }, [])
-
-  /** 离散修改立即保存 */
-  const save = (patch: Partial<Task>): void => {
-    const next = { ...draft, ...patch }
-    setDraft(next)
-    void upsertTask(next)
-  }
-
-  /** 文本输入防抖保存 */
-  const saveDebounced = (patch: Partial<Task>): void => {
-    const next = { ...draft, ...patch }
-    setDraft(next)
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => void upsertTask(next), 450)
-  }
 
   const setDue = (iso: string | null): void => {
     save({ dueAt: iso })
@@ -122,14 +108,18 @@ export default function TaskDetail({ task }: { task: Task }): JSX.Element {
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
           {/* 标题 */}
           <input
+            aria-label="任务标题"
             value={draft.title}
             onChange={e => saveDebounced({ title: e.target.value })}
+            onBlur={() => void autosave.flush()}
             className={`w-full bg-transparent text-lg font-semibold outline-none ${draft.done ? 'text-zinc-400 line-through' : ''}`}
           />
 
           {/* 完成 */}
           <button
-            onClick={() => void useStore.getState().setDone(task.id, !task.done)}
+            onClick={() => void (async () => {
+              if (await autosave.flush()) await useStore.getState().setDone(task.id, !task.done)
+            })()}
             className={`btn w-full ${draft.done ? 'btn-ghost' : 'btn-primary'}`}
           >
             {draft.done ? '标记为未完成' : '完成任务'}
@@ -266,7 +256,10 @@ export default function TaskDetail({ task }: { task: Task }): JSX.Element {
             </div>
             <input
               value={tagText}
-              onChange={e => setTagText(e.target.value)}
+              onChange={e => {
+                setTagText(e.target.value)
+                saveDebounced({ tags: e.target.value.split(/[,，\s]+/).map(t => t.replace(/^@/, '').trim()).filter(Boolean) })
+              }}
               onBlur={commitTags}
               onKeyDown={e => {
                 if (e.key === 'Enter') commitTags()
@@ -282,8 +275,10 @@ export default function TaskDetail({ task }: { task: Task }): JSX.Element {
               <StickyNote size={12} /> 备注
             </div>
             <textarea
+              aria-label="任务备注"
               value={draft.notes ?? ''}
               onChange={e => saveDebounced({ notes: e.target.value })}
+              onBlur={() => void autosave.flush()}
               rows={4}
               placeholder="补充说明…"
               className="input resize-none leading-relaxed"
@@ -293,9 +288,9 @@ export default function TaskDetail({ task }: { task: Task }): JSX.Element {
 
         {/* 底部 */}
         <div className="flex items-center justify-between border-t border-zinc-100 px-5 py-3 dark:border-zinc-800">
-          <span className="text-[11px] text-zinc-400">创建于 {formatDateTimeCn(draft.createdAt)}</span>
+          <span className="text-[11px] text-zinc-400"><SaveStatus state={autosave.state} error={autosave.error} retry={autosave.flush} /><br />创建于 {formatDateTimeCn(draft.createdAt)}</span>
           <button
-            onClick={() => void deleteTask(task.id)}
+            onClick={() => void (async () => { await autosave.discard(); await deleteTask(task.id) })()}
             className="btn-danger !px-2.5 !py-1.5 text-xs"
           >
             <Trash2 size={13} /> 删除任务
